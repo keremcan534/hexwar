@@ -9,6 +9,7 @@
 
 import { EVENT_TIMEOUT, pendingCards, resolveCard } from '../game/eventCards.js';
 import { gameDate } from './hud.js';
+import { pausePolicyOf } from '../game/notifications.js';
 
 /**
  * Olayın sahnesi: menü resimlerinden biri. Paradox olayının gücü başlık
@@ -119,7 +120,9 @@ export class EventCards {
     if (!card) return this.close();
     if (this.layer?.dataset.key === card.key) return;
     this.close(false);
-    if (this.game.clock?.speed > 0) {
+    // Kart saati yalnız "All" ayarında durdurur (Kerem: "oyun sürekli
+    // duruyor"): cevapsız kart süresi dolunca kabine karar verir.
+    if (this.game.clock?.speed > 0 && pausePolicyOf(this.game) === 'all') {
       this.resumeSpeed = this.game.clock.speed;
       this.game.setSpeed(0);
     }

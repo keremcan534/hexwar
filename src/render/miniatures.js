@@ -482,8 +482,8 @@ export class MiniLayer {
     // kaldığında geçiş bandı bulanık bir yığın gibi okunuyordu.
     this.blend = smoothstep(0, 0.6, blend);
     this.counterAlpha = 1 - smoothstep(0.45, 1, blend);
-    // Levha sayaç çekilirken gelir: ikisi aynı anda görünse bilgi iki kez yazılıyordu.
-    this.plateAlpha = smoothstep(0.55, 1, blend);
+    // Levha sayaç çekildiği ölçüde gelir (toplam hep 1): ayrı eğrilerde arada bilgi sönüyordu.
+    this.plateAlpha = 1 - this.counterAlpha;
     this.rings.length = 0;
     this.ringed.clear();
     this.now = performance.now();
@@ -591,7 +591,6 @@ export class MiniLayer {
   figure(kind, tint, anim, dir, x, y, phase) {
     const atlas = this.atlas(kind);
     if (!atlas) return;
-    const { anchor, muzzles, glow } = atlas.meta;
     const scale = (FIGURE_SCALE[kind] ?? 1) * (this.fit ?? 1);
     const worldSize = atlas.meta.worldSize * scale;
     const kindIdx = MINI_KINDS.indexOf(kind);
@@ -603,8 +602,25 @@ export class MiniLayer {
       const key = (tint.id * 8 + kindIdx) * 160 + dir * 20 + MINI_ATLAS.anims[anim].start;
       slot = book.slots.get(key) ?? -1;
       this.renderer.requestFrame?.();
-      if (slot < 0) return;
+      if (slot < 0) {
+        // Zoom hücre kademesini değiştirdi: yeni defter boş, eskisinde aynı kare var. Ondan
+        // ölçeklenip basılır; yoksa figür o karede YOKTU ve sayaç da sönmüş olduğu için
+        // birlik görünmez oluyordu (Kerem: "görünmez olma efekti").
+        const exact = (tint.id * 8 + kindIdx) * 160 + dir * 20 + frame;
+        for (const other of this.books.values()) {
+          if (other === book || other.cell < book.cell / 2) continue;
+          const hit = other.slots.get(exact) ?? other.slots.get(key);
+          if (hit === undefined) continue;
+          return this.queueFigure(other, hit, atlas, anim, frame, dir, x, y, worldSize, scale);
+        }
+        return false;
+      }
     }
+    return this.queueFigure(book, slot, atlas, anim, frame, dir, x, y, worldSize, scale);
+  }
+
+  queueFigure(book, slot, atlas, anim, frame, dir, x, y, worldSize, scale) {
+    const { anchor, muzzles, glow } = atlas.meta;
     let f = this.queue[this.count];
     if (!f) {
       f = {};
@@ -629,6 +645,7 @@ export class MiniLayer {
         }
       }
     }
+    return true;
   }
 
   flash(x, y, angle, reach, radius, power) {
@@ -647,13 +664,17 @@ export class MiniLayer {
   }
 
   /** Karadaki (ya da bindirilmiş) yığının figürlerini kuyruğa alır; atlas hazır değilse null. */
-  stack(ctx, stack, nation) {
+  stack(ctx, stack, nation, at = null) {
     const unit = stack[0];
     const tile = unit.tile;
     const groups = this.composition(stack);
     if (!groups.length) return null;
     for (let g = 0; g < groups.length; g++) if (!this.atlas(groups[g].kind)) return null;
-    this.glide(unit, tile.x, tile.y + (tile.city ? HEX_SIZE * 0.22 : 0));
+    // Yer sayaçla ortak (renderer.unitGlide): sayaç ile figür aynı yolda kayar, geçişte sıçramaz.
+    if (at) {
+      this.atX = at.x;
+      this.atY = at.y;
+    } else this.glide(unit, tile.x, tile.y + (tile.city ? HEX_SIZE * 0.22 : 0));
     const x = this.atX;
     const y = this.atY;
     this.stance(unit, tile);
@@ -666,7 +687,8 @@ export class MiniLayer {
     if (kind === 'transport' && anim === 'walk') this.straightWake(ctx, x, y, hx, hy);
     const rx = Math.max(RING.minRadius * (this.fit ?? 1), size * RING.baseShare);
     const ry = rx * RING.baseSquash;
-    this.figure(kind, this.tintOf(nation, kind), anim, dir, x, y, hash01(unit.id));
+    // Figür bu karede basılamadıysa sayaç tam görünür kalır (null).
+    if (!this.figure(kind, this.tintOf(nation, kind), anim, dir, x, y, hash01(unit.id))) return null;
     const reach = size * RING.bodyShare;
     this.foot.left = x - reach;
     this.foot.right = x + reach;

@@ -1,24 +1,20 @@
-// Harita ambiyansı: rüzgâr, deniz, savaş yağmuru, cephe, deniz topçusu.
-//
-// LİSANS NOTU (yayından ÖNCE okunmalı): assets/audio/ambience/ altındaki beş
-// döngü YEREL SINAMA sesidir. Yalnız rüzgâr kaydı "No Copyright" diye
-// yayımlanmıştı; deniz, yağmur+topçu, WW1 cephesi ve yelkenli topçusu
-// YouTube kanallarından, lisansı belirsiz. Klasör .gitignore'dadır, depoya
-// girmez; yayından önce CC0/lisanslı kayıtlarla değiştirilmeli. İşleme hattı
-// (ffmpeg): olay yoğun, kırpılmamış 120-140 s'lik parça (10 s pencerede
-// ebur128 + astats), -26 LUFS loudnorm, kuyruk başa 4 s eşit güçle bindirilip
-// dikişsiz döngü, Opus/Ogg 72 kbps. Dosya yoksa o katman sessiz kalır.
+// Harita ambiyansı: rüzgâr, kıyıda deniz, karada uzak kuşlar, savaşta uzak
+// cephe (top gümbürtüsü + seyrek tüfek). Ses ui/soundscape.js'te SENTEZLENİR;
+// bu dosya yalnız oyunun hâlinden hedef düzeyleri okur.
 //
 // Neden böyle kuruldu:
-// - Web Audio: beş katman aynı anda döner, her birinin kendi kazancı var;
-//   Audio elemanında döngü dikişi duyulur ve kazançlar arası geçiş setInterval
-//   ister. Tek AudioContext, tek ana kazanç; her tampon ilk duyulacağı an
-//   bir kez çözülür (tembel: menüde hiç, barışta yalnız rüzgâr + deniz).
+// - Eski beş kayıt (assets/audio/ambience/, YouTube, lisansı belirsiz, depoda
+//   yok) kulağı yoruyordu: kısa döngü, savaş boyunca kameradan bağımsız
+//   "yağmur + topçu", ani giriş. Artık dosya okunmaz; o klasör kullanılmıyor.
 // - Sürekli rAF YOK. Hedefler oyun olaylarında (hafta, harita kipi, muharebe,
-//   kare = kamera) yeniden hesaplanır ve tek zamanlayıcıyla saniyede en çok
-//   dört kez; geçişleri AudioParam.setTargetAtTime kendisi yürütür.
+//   kare = kamera) saniyede en çok dört kez hesaplanır; geçişleri
+//   AudioParam.setTargetAtTime yürütür. Olaylar (esinti, dalga, top) yarım
+//   saniyelik zamanlayıcıyla ses saatine ileriye yazılır, yalnız ses açıkken.
+// - Savaş sesi oyuncunun kendi muharebelerinden gelir; kameranın uzaklığı ve
+//   kulak menzilindeki muharebe sayısı belirler. Muharebe verisi yalnız
+//   okunur (world.battleSystem); oyunun zarı kullanılmaz.
 // - Tarayıcı kullanıcı dokunmadan sesi engeller: bağlam ilk dokunuş/tuşta
-//   kurulur (menuMusic.js ile aynı yol), önce kurulursa konsola uyarı düşer.
+//   kurulur, önce kurulursa konsola uyarı düşer.
 // - Ana menüde ve kampanya başlamadan ambiyans yok: menünün müziği var.
 //
 // Katman notu: ui katmanıdır; oyun durumunu OKUR, oyuna yazmaz. Oyun bu
@@ -27,28 +23,30 @@
 import { atWar } from '../game/diplomacy.js';
 import { pixelToHex } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
-
-const BASE = 'assets/audio/ambience/';
-const LAYERS = ['wind', 'ocean', 'war-rain', 'front', 'naval'];
+import { Soundscape } from './soundscape.js';
 
 const VOLUME_KEY = 'hexwar:ambience-volume';
 const MUTE_KEY = 'hexwar:ambience-muted';
 const DEFAULT_VOLUME = 60;
-/** Karışımdaki yeri: kayıtlı kaydırıcı değerleri de kısılsın diye düzeyin üstünde. */
-const MIX_TRIM = 0.55;
+/** Karışımdaki yeri (ölçüm: scripts/ui/ambience-levels.plan.mjs). */
+const MIX_TRIM = 0.5;
 
 /** Hedef hesabı en sık bu aralıkla: kamera kaydırması kare başına tetikler. */
 const UPDATE_MS = 250;
-/** Katman geçişinin zaman sabiti (s): ~3τ'da hedefe varır, kesme duyulmaz. */
-const TAU = 0.7;
+/** Olay yazıcısı bu aralıkla uyanır ve bu kadar ileriyi yazar. */
+const PUMP_MS = 500;
+const LOOKAHEAD_S = 1.5;
+/** Sessizlikten sese ana kazanç yavaş gelir: açılışta sıçrama yok. */
+const MASTER_TAU = 1.2;
 /** Ekran/duraklatma kısması daha çabuk oturmalı: oyuncu tıkladığını duysun. */
-const DUCK_TAU = 0.25;
+const DUCK_TAU = 0.35;
 /** Yönetim ekranı açıkken: −8 dB. */
 const SCREEN_DUCK = 0.4;
 /** Duraklatılmış oyun: dünya yaşıyor hissi kalsın, ama geri çekilsin. */
 const PAUSE_DUCK = 0.65;
 /** Deniz muharebesinin sesi bu kadar haftada söner. */
 const NAVAL_WEEKS = 4;
+const LEVELS = ['wind', 'sea', 'country', 'front', 'fronts', 'naval'];
 
 export class Ambience {
   constructor(game) {
@@ -57,13 +55,12 @@ export class Ambience {
     this.muted = readMuted();
     this.ctx = null;
     this.master = null;
-    this.layers = Object.fromEntries(LAYERS.map((name) => [name, {
-      gain: null, buffer: null, source: null, state: 'idle', target: 0, sent: null,
-    }]));
+    this.scape = null;
     this.sentLevel = null;
-    this.targets = Object.fromEntries(LAYERS.map((name) => [name, 0]));
+    this.targets = Object.fromEntries(LEVELS.map((name) => [name, 0]));
     this.duck = 0;
     this.timer = 0;
+    this.pumpTimer = 0;
     this.lastUpdate = 0;
     this.cost = { last: 0, max: 0, calls: 0 };
     // Sınama girdisi: başsızda deniz muharebesi üretilemezse bozulma yolu
@@ -77,10 +74,9 @@ export class Ambience {
     }
     // Menü, ülke seçimi ve yönetim ekranı yalnız gövde sınıfıyla duyurulur.
     new MutationObserver(schedule).observe(document.body, { attributes: true, attributeFilter: ['class'] });
-    // Arka plandaki sekmede döngü çalmaya devam etmesin. Doğrudan suspend
-    // DEĞİL: dönüşte bağlam tam kazançta uyanıp sesi tek adımda başlatıyordu
-    // (ölçüldü: resume anında ana kazanç 0.39). Gizlenince kazanç söner, askı
-    // sessizlik yolundan gelir; görününce sıfırdan açılır.
+    // Arka plandaki sekmede ses dönmesin. Doğrudan suspend DEĞİL: dönüşte
+    // bağlam tam kazançta uyanıp sesi tek adımda başlatıyordu. Gizlenince
+    // kazanç söner, askı sessizlik yolundan gelir; görününce yavaşça açılır.
     document.addEventListener('visibilitychange', () => this.update());
     this.armUnlock();
     this.mountSettings();
@@ -105,8 +101,7 @@ export class Ambience {
     const Ctx = globalThis.AudioContext ?? globalThis.webkitAudioContext;
     if (!Ctx) return;
     try {
-      // 48 kHz sabit: tamponlar bağlamın hızında çözülür; aygıt 192 kHz'te
-      // açılırsa (başsızda ölçüldü) beş döngü 708 MB tutuyordu, 48 kHz'te ~177.
+      // 48 kHz sabit: aygıt 192 kHz'te açılırsa gürültü tamponları dört kat tutar.
       this.ctx = new Ctx({ sampleRate: 48000 });
     } catch {
       try {
@@ -118,58 +113,8 @@ export class Ambience {
     this.master = this.ctx.createGain();
     this.master.gain.value = 0;
     this.master.connect(this.ctx.destination);
-    for (const name of LAYERS) {
-      const layer = this.layers[name];
-      layer.gain = this.ctx.createGain();
-      layer.gain.gain.value = 0;
-      layer.gain.connect(this.master);
-    }
+    this.scape = new Soundscape(this.ctx, this.master);
     this.schedule();
-  }
-
-  /**
-   * Katman ilk kez duyulacağı an yüklenir: menüde hiçbir şey çözülmez,
-   * barışta yalnız rüzgâr + deniz (~35 MB); savaş katmanları ilk savaşta.
-   * Önce rüzgâr: klasör hiç yoksa (depodan temiz çekilmiş kopya) tek istek
-   * başarısız olur, öteki dört istek hiç atılmaz ve konsolda tek ağ satırı
-   * kalır.
-   */
-  want(name) {
-    const layer = this.layers[name];
-    if (layer.state !== 'idle') return;
-    if (name !== 'wind') {
-      if (this.layers.wind.state === 'idle') this.want('wind');
-      if (this.layers.wind.state !== 'ready') return;
-    }
-    this.load(name).then((ok) => {
-      if (!ok && name === 'wind') {
-        for (const n of LAYERS) if (this.layers[n].state === 'idle') this.layers[n].state = 'skipped';
-      }
-      this.schedule();
-    });
-  }
-
-  async load(name) {
-    const layer = this.layers[name];
-    layer.state = 'loading';
-    try {
-      const res = await fetch(`${BASE}${name}.ogg`);
-      if (!res.ok) throw new Error(String(res.status));
-      layer.buffer = await this.ctx.decodeAudioData(await res.arrayBuffer());
-    } catch {
-      layer.state = 'missing';
-      return false;
-    }
-    const source = this.ctx.createBufferSource();
-    source.buffer = layer.buffer;
-    source.loop = true;
-    source.connect(layer.gain);
-    // Döngüler aynı anda başlarsa katmanlar her açılışta aynı anı birlikte
-    // çalar; rastgele ofset tekrarı dağıtır.
-    source.start(0, Math.random() * layer.buffer.duration);
-    layer.source = source;
-    layer.state = 'ready';
-    return true;
   }
 
   // ---- hedefler ----------------------------------------------------------
@@ -202,7 +147,7 @@ export class Ambience {
     const world = game.world;
     const body = document.body.classList;
     const pid = game.turns?.playerNation;
-    const zero = Object.fromEntries(LAYERS.map((name) => [name, 0]));
+    const zero = Object.fromEntries(LEVELS.map((name) => [name, 0]));
     const shown = world && pid != null && world.nations?.[pid]
       && !body.contains('menu-open') && !body.contains('picker-open');
     if (!shown) return { targets: zero, duck: 0 };
@@ -214,11 +159,15 @@ export class Ambience {
     const war = world.nations.some((n) => n.alive && n.id !== pid && atWar(world, pid, n.id));
 
     const t = { ...zero };
-    t.wind = (0.32 + 0.28 * (1 - near)) * (war ? 0.3 : 1);
     const sea = this.seaShare(world, cam);
-    t.ocean = Math.min(0.9, sea * (0.5 + 0.2 * near) * (seas ? 1.6 : 1) + (seas ? 0.18 : 0));
-    t['war-rain'] = war ? 0.42 : 0;
-    t.front = this.frontLevel(world, cam, pid, near);
+    // Yükseldikçe rüzgâr artar, yere inince yerin sesi gelir.
+    t.wind = (0.3 + 0.3 * (1 - near)) * (war ? 0.75 : 1);
+    t.sea = Math.min(0.85, sea * (0.45 + 0.4 * near) * (seas ? 1.5 : 1) + (seas ? 0.12 : 0));
+    // Kır: kara üstünde ve yakında; savaşta kuşlar seyrekleşir.
+    t.country = (1 - sea) * near ** 1.3 * (war ? 0.2 : 0.8);
+    const front = this.frontLevel(world, cam, pid, near);
+    t.front = front.level;
+    t.fronts = front.count;
     t.naval = this.navalLevel(world, pid, seas && war);
 
     let duck = 1;
@@ -248,26 +197,30 @@ export class Ambience {
   }
 
   /**
-   * Oyuncunun kara muharebesi: uzakta alçak bir uğultu, kamera yanına
-   * yaklaştıkça yükselir. Mesafe ekranın yarı genişliğine göre ölçülür:
-   * ekrandaki muharebe duyulur, ekran dışındaki yalnız uzaktan.
+   * Oyuncunun kara muharebeleri. Kulak menzili ekranın yarı genişliğinin
+   * 1.6 katı: ekrandaki muharebe belirgin, kenarın biraz ötesindeki uzaktan
+   * duyulur, daha ötesi hiç. Birden çok muharebe toplanır ama doyar
+   * (1 − e^−Σ): on muharebe on kat gürültü değildir.
    */
   frontLevel(world, cam, pid, near) {
     const battles = world.battleSystem?.battles;
-    if (!battles?.length) return 0;
-    const half = cam.viewWidth / (2 * cam.zoom);
-    let best = Infinity;
+    if (!battles?.length) return { level: 0, count: 0 };
+    const reach = Math.max(cam.viewWidth / (2 * cam.zoom), HEX_SIZE * 8) * 1.6;
+    let sum = 0;
+    let count = 0;
     for (const b of battles) {
       if (b.attackerNation !== pid && b.defenderNation !== pid) continue;
       const tile = world.get(b.q, b.r);
       if (!tile) continue;
       let dx = Math.abs(tile.x - cam.x);
       if (cam.wrapX) dx = Math.min(dx, cam.wrapX - (dx % cam.wrapX));
-      best = Math.min(best, Math.hypot(dx, tile.y - cam.y));
+      const w = clamp01(1 - Math.hypot(dx, tile.y - cam.y) / reach);
+      if (w <= 0) continue;
+      count++;
+      sum += w ** 1.5;
     }
-    if (best === Infinity) return 0;
-    const close = clamp01(1 - best / Math.max(half, HEX_SIZE * 8));
-    return 0.1 + 0.65 * close * (0.25 + 0.75 * near);
+    if (!count) return { level: 0, count: 0 };
+    return { level: (1 - Math.exp(-1.4 * sum)) * (0.3 + 0.7 * near), count };
   }
 
   /** Bu hafta deniz muharebesi: sonra birkaç haftada söner. */
@@ -279,43 +232,51 @@ export class Ambience {
     }
     const age = turn - last;
     const fight = age >= 0 && age <= NAVAL_WEEKS ? 0.6 * Math.exp(-age / 1.5) : 0;
-    return Math.max(fight, seaWar ? 0.22 : 0);
+    return Math.max(fight, seaWar ? 0.15 : 0);
   }
 
   apply() {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    let ready = false;
-    for (const name of LAYERS) {
-      const layer = this.layers[name];
-      layer.target = this.targets[name];
-      if (layer.target > 0) this.want(name);
-      // Hazır olmayan katmanın kazancı 0'da bekler: geç yüklenen döngü
-      // yarım yolda kalmış bir rampaya değil, sıfırdan açılır.
-      if (layer.state !== 'ready') continue;
-      ready = true;
-      // Aynı hedefi yeniden yazmak 4 Hz'de zaman çizelgesine olay yığar.
-      if (layer.sent === layer.target) continue;
-      layer.sent = layer.target;
-      layer.gain.gain.setTargetAtTime(layer.target, now, TAU);
-    }
-    // Çalacak dosya yoksa (temiz kopya) bağlam boşa dönmesin: sessizlik
-    // yolu onu askıya alır ve bir daha uyandırmaz.
+    // Aynı hedefi yeniden yazmak 4 Hz'de zaman çizelgesine olay yığar:
+    // Soundscape.set yalnız değişen katmanı yazar.
+    this.scape.set(this.targets, now);
     const hidden = document.visibilityState === 'hidden';
-    const level = this.muted || hidden || !ready ? 0 : (this.volume / 100) * this.duck * MIX_TRIM;
+    const level = this.muted || hidden ? 0 : (this.volume / 100) * this.duck * MIX_TRIM;
     if (level !== this.sentLevel) {
+      // Sessizlikten sese yavaş, kısmaya çabuk: açılışta sıçrama yok.
+      const tau = !(this.sentLevel > 0.001) ? MASTER_TAU : DUCK_TAU;
       this.sentLevel = level;
-      this.master.gain.setTargetAtTime(level, now, DUCK_TAU);
+      this.master.gain.setTargetAtTime(level, now, tau);
     }
-    // Sessizlikte bağlam askıya alınır: ana menüde beş döngü boşa dönmesin.
+    // Sessizlikte bağlam askıya alınır: ana menüde ses boşa dönmesin.
     clearTimeout(this.suspendTimer);
     if (level > 0) {
       if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+      this.startPump();
     } else if (this.ctx.state === 'running') {
       this.suspendTimer = setTimeout(() => {
-        if (this.master.gain.value < 0.001) this.ctx.suspend().catch(() => {});
+        if (this.master.gain.value < 0.001) {
+          this.stopPump();
+          this.ctx.suspend().catch(() => {});
+        }
       }, 2000);
     }
+  }
+
+  /** Olay yazıcısı: yalnız ses açıkken; bağlam askıdayken boşa yazmaz. */
+  startPump() {
+    if (this.pumpTimer) return;
+    const pump = () => {
+      if (this.ctx.state === 'running') this.scape.pump(this.ctx.currentTime + LOOKAHEAD_S);
+    };
+    pump();
+    this.pumpTimer = setInterval(pump, PUMP_MS);
+  }
+
+  stopPump() {
+    clearInterval(this.pumpTimer);
+    this.pumpTimer = 0;
   }
 
   // ---- denetim -----------------------------------------------------------
@@ -340,28 +301,20 @@ export class Ambience {
     this.update();
   }
 
-  /** Konsol: game.ambience.state() — hedefler ve o anki kazançlar. */
+  /** Konsol: game.ambience.state() — hedefler, kazançlar, olay sayaçları. */
   state() {
-    const layers = {};
-    let bytes = 0;
-    for (const name of LAYERS) {
-      const layer = this.layers[name];
-      layers[name] = {
-        target: round(this.targets[name]),
-        gain: round(layer.gain?.gain.value ?? 0),
-        file: layer.state,
-      };
-      if (layer.buffer) bytes += layer.buffer.length * layer.buffer.numberOfChannels * 4;
-    }
+    const sc = this.scape;
+    const gain = (node) => round(node?.gain.value ?? 0);
     return {
       context: this.ctx?.state ?? 'none',
       sampleRate: this.ctx?.sampleRate ?? 0,
-      decodedMB: Math.round(bytes / 1048576),
       volume: this.volume,
       muted: this.muted,
       duck: round(this.duck),
       master: round(this.master?.gain.value ?? 0),
-      layers,
+      targets: Object.fromEntries(LEVELS.map((name) => [name, round(this.targets[name])])),
+      buses: sc ? { wind: gain(sc.windBus), sea: gain(sc.seaBus), country: gain(sc.countryBus), front: gain(sc.frontBus) } : null,
+      events: sc ? { ...sc.counts, voices: sc.playing() } : null,
       cost: { lastMs: round(this.cost.last, 4), maxMs: round(this.cost.max, 4), calls: this.cost.calls },
     };
   }

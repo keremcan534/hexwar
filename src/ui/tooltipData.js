@@ -29,7 +29,7 @@ import { activeAlerts } from '../game/alerts.js';
 import { easingNote, shownAlert } from './alerts.js';
 import { DELEGATION_AREAS, areasOfScreen, isDelegated } from '../game/delegation.js';
 import {
-  COALITION_CHANCE, INFAMY, INFAMY_ANNEX, INFAMY_COALITION, infamyDecayOf, maxCoalitionAttackers,
+  COALITION_TIERS, INFAMY, INFAMY_ANNEX, INFAMY_COALITION, infamyDecayOf, maxCoalitionAttackers,
 } from '../game/infamy.js';
 import {
   FEED, FUND_FLOOR_WEEKS, HAND_OUTPUT, INDUSTRY_PER_DEV, INVEST, RESOURCES, SUPPLY,
@@ -549,7 +549,7 @@ export function registerTooltips(game) {
       title: 'Infamy',
       value: `${infamy.toFixed(1)} / ${INFAMY_COALITION}`,
       text: `How much the world resents your conquests. From ${INFAMY_COALITION} on, every week each nation in contact `
-        + `with you has a chance of ${pct(COALITION_CHANCE)} to join a coalition war against you, up to `
+        + `with you may join a coalition war against you: ${COALITION_TIERS.map((t) => `${pct(t.chance)} from ${INFAMY_COALITION + t.over}`).join(', ')}, up to `
         + `${maxCoalitionAttackers()} fronts at once; the hopelessly weak stay out. Land taken at the peace table is the `
         + `main source: ${INFAMY_ANNEX.PER_TILE} a hex, ${INFAMY_ANNEX.PER_CITY} a city and 1 per `
         + `${formatPopulation(INFAMY_ANNEX.POP_PER_POINT)} people, ×${INFAMY_ANNEX.FOREIGN} for a foreign people `

@@ -17,9 +17,13 @@ import { DIP_AI, READ } from './dipDefs.js';
 
 export const INFAMY = {
   /** Kendi halkının yaşadığı kareyi almak ucuz: haklı talep sayılır. */
-  OWN_CULTURE_TILE: 0.5,
-  FOREIGN_CULTURE_TILE: 1,
-  CITY: 6,
+  // 2026-11-23 (Kerem: "infamy çok kanser"): işgal izi masadaki bedelle
+  // aynı boydaydı (aktif fatih sondası: 10 yılda işgal 122-145, masa 123-126)
+  // ve geri verilen toprak da ödetiyordu. Kalıcı bedel masada kalır; işgal
+  // savaşın geçici rahatsızlığıdır: 0.5/1/6 → 0.2/0.4/2.5.
+  OWN_CULTURE_TILE: 0.2,
+  FOREIGN_CULTURE_TILE: 0.4,
+  CITY: 2.5,
   /**
    * Sabit azalma 1'den 0.05'e indirildi. 300 turluk oyunda savaşlar sıkışıktı
    * ve 1/tur işe yarıyordu; 5740 turluk ufukta fetih seyrekleşince azalma her
@@ -30,7 +34,10 @@ export const INFAMY = {
    * idi): fethi bırakan ülke 1-3 yılda temizlenir (ölçüldü: tek ilhaklık
    * ~4.4 şöhret 62 haftada sıfırlandı).
    */
-  DECAY_PER_TURN: 0.05,
+  // 0.05 → 0.08 ve oran 0.012 → 0.016 (2026-11-23): yeni barış kuralı
+  // barış başına 2-3 küme verdiriyor; eski sönümle dört barışlık on yılın
+  // %71-75'i koalisyon eşiğinin üstünde geçiyordu (sonda, bkz. TASARIM §12).
+  DECAY_PER_TURN: 0.08,
   /**
    * 0.02'den 0.012'ye. Salam denge hesabi: yillik tek-kume barisi (ilhak ~7 x
    * tekrar carpani <=2.5 + isgal izi ~8) 0.02'de ~14'luk bir dengeye oturuyor
@@ -43,7 +50,7 @@ export const INFAMY = {
    * (olculdu: zirve 519-1141, esik ustu 4.7k-13k ulke-hafta, cullanma 6'ya
    * cikti). Azalma her hafta isler; fren orani, durdurma degil.
    */
-  DECAY_RATIO: 0.012,
+  DECAY_RATIO: 0.016,
 };
 
 /**
@@ -82,7 +89,8 @@ export const INFAMY_ANNEX = {
   // WALK_IN_SHARE) savaslar daha kesin bitiyor ve 50 yilda el degistiren
   // kume payi %31'den %39'a cikti (audit:war-pressure). Gem ordunun hizinda
   // degil dunyanin tepkisinde: seri fatih koalisyon esigine daha erken varir.
-  PER_TILE: 0.5,
+  // 0.5 → 0.4 (2026-11-23): barış kuralı küme başına daha geniş toprak verdiriyor.
+  PER_TILE: 0.4,
   PER_CITY: 3,
   /** Bu kadar nufus basina bir puan: kalabalik toprak daha cok rahatsiz eder. */
   POP_PER_POINT: 100000 * POPULATION_SCALE,
@@ -97,8 +105,17 @@ export const INFAMY_ANNEX = {
    * yurdu icin isler — kendi halkimizin ya da ortak ettigimiz bir halkin
    * yurdunu almak zaten ucuzdur.
    */
-  HOMELAND: 1.6,
+  HOMELAND: 1.4,
 };
+
+/**
+ * Aynı kurbana TEKRARLANAN savaşın masa çarpanı (barış ve talep aynı kuralı
+ * okur). 0.5 adım / ×2.5 tavan → 0.35 / ×2 (2026-11-23): iki komşuyla dönüşümlü
+ * savaşan oyuncu üçüncü barışta ×2'ye çıkıp eşiği tek masada aşıyordu.
+ */
+export function repeatScaleOf(wars) {
+  return Math.min(2, 1 + 0.35 * Math.max(0, (wars ?? 1) - 1));
+}
 
 export function addInfamy(nation, amount) {
   nation.infamy = Math.max(0, (nation.infamy ?? 0) + amount);
@@ -201,7 +218,28 @@ export function maxCoalitionAttackers() {
  * esigi gecen ulkeye birkac hafta icinde butun komsularini birden bindiriyordu.
  * Koalisyon nadir ve dramatik bir olay olmali, haftalik bir vergi degil.
  */
-export const COALITION_CHANCE = 0.08;
+export const COALITION_CHANCE = 0.06;
+
+/**
+ * KADEMELİ koalisyon (2026-11-23). Eskiden eşiğin bir puan üstü de iki katı da
+ * haftada %8 zardı: eşiğe değen fatih bütün komşularını aynı hızla üstüne
+ * çekiyordu. Artık eşikte uyarı kadar (%1.5), eşik + 10'da tam zar (%6),
+ * eşik + 25'te kaçak fatihin bedeli (%10).
+ */
+export const COALITION_TIERS = [
+  { over: 0, chance: 0.015, label: 'Wary' },
+  { over: 10, chance: COALITION_CHANCE, label: 'Hostile' },
+  { over: 25, chance: 0.10, label: 'United against' },
+];
+
+/** Şöhretin haftalık koalisyon zarı (eşiğin altında 0). */
+export function coalitionChanceOf(infamy) {
+  let chance = 0;
+  for (const tier of COALITION_TIERS) {
+    if ((infamy ?? 0) >= INFAMY_COALITION + tier.over) chance = tier.chance;
+  }
+  return chance;
+}
 
 export function checkCoalitions(game, rng) {
   const world = game.world;
@@ -235,7 +273,7 @@ export function checkCoalitions(game, rng) {
       const liked = DIP_AI.relations
         ? 1 - Math.max(0, Math.min(READ.COALITION_CAP, regardOf(world, other.id, target.id))) / READ.COALITION_DIV
         : 1;
-      if (rng() > COALITION_CHANCE * liked) continue;
+      if (rng() > coalitionChanceOf(target.infamy) * liked) continue;
       if (declareWar(game, other.id, target.id, { reason: 'coalition' })) {
         declared++;
         fronts++;
@@ -245,7 +283,7 @@ export function checkCoalitions(game, rng) {
         if (target.id === game.turns?.playerNation) {
           game.turns.addLog(
             `${world.nations[other.id].name} joined a coalition against us — our infamy has united our neighbours.`,
-            { kind: 'CRISIS' },
+            { kind: 'CRISIS', urgent: true },
           );
         }
       }

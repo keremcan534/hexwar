@@ -79,9 +79,9 @@ Mimari ve tasarım kararları için [README.md](README.md).
   pencere köşesine, hiçbir denetimin üstüne binmez), komutan kartı düğme 9 dilimidir.
   İktidar partisinin rengi üst çubuğa ve başlık elmaslarına ince bir cam olarak düşer
   (`ui/partyTint.js`, Settings → Display → Party colour). Künyedeki bayrak gönderde serbest
-  dalgalanır (flagWave `banner`). Oyuncu yeni savaşa girince sekme şeridinin altından savaş
-  sancakları iner (`ui/warBanners.js`); savaşta bayrak savaş biçiminde çizilir (flagPainter
-  `drawFlag(..., {war})`: hilal ters, simgenin ardında kılıç). Hepsi yalnız görünüştür.
+  dalgalanır (flagWave `banner`); savaşta bayrak savaş biçiminde çizilir (flagPainter
+  `drawFlag(..., {war})`: hilal ters, simgenin ardında kılıç). Savaş ilanında inen dev sancaklar
+  (`ui/warBanners.js`) Kerem'in isteğiyle bağlı DEĞİL. Hepsi yalnız görünüştür.
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.

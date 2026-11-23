@@ -17,6 +17,7 @@ import { FrontPlates } from './ui/frontPlates.js';
 import { NationPicker } from './ui/nationPicker.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
 import { Soundtrack } from './ui/soundtrack.js';
+import { MusicPicker } from './ui/musicPicker.js';
 import { EventCards } from './ui/eventCard.js';
 import { Newspaper } from './ui/newspaper.js';
 import { Ambience } from './ui/ambience.js';
@@ -126,6 +127,8 @@ hud.bindMenu(menu);
 // Oyun müziği: savaşta, barışta ve kazanılan barışta ayrı kayıt (bkz.
 // ui/soundtrack.js). Menü açıkken susar, menü müziği çalar.
 game.music = new Soundtrack(game, menu);
+// Müzik seçici: üst çubukta saatin yanında (ui/musicPicker.js).
+new MusicPicker(game.music);
 
 // Harita ambiyansı (bkz. ui/ambience.js): Settings paneline kendi "audio"
 // satırını ekler. Konsoldan denetim için oyuna bağlı: game.ambience.state().

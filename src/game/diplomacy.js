@@ -380,6 +380,7 @@ export function declareWar(game, a, b, options = {}) {
       // haberi yok değil. Saldırıya uğramak ya da devredilmiş diplomasinin
       // ilanı ise durdurur (Kerem: "oyun aşırı fazla duruyor").
       halt: !(manual && !attacked),
+      urgent: attacked,
       leader: attacked ? other.id : null,
       title: attacked
         ? `${other.name} declares war on us — ${weeks} weeks to prepare`
@@ -514,7 +515,7 @@ export function resolveCrises(game) {
         // durmasin.
         game.notifications?.dismissKeys?.(`crisis-${other.id}`);
         announce(game, me, {
-          kind: 'WAR', tier: TIER.MAJOR, key: `war-${other.id}`, ttl: 0,
+          kind: 'WAR', tier: TIER.MAJOR, key: `war-${other.id}`, ttl: 0, urgent: attacked,
           title: attacked ? `${other.name}'s armies cross the border` : `War with ${other.name} begins`,
           // Generaller emir gelene kadar TUTAR: kart bunu soylemezse savas
           // haftalarca "0 engaged" ile gecer (kor oyun testi, 6 hafta).

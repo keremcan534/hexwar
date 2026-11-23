@@ -250,6 +250,7 @@ function frontHtml(game, me, units) {
   const back = general.fallingBack && general.fallback?.length;
   const line = back
     ? `Falling back · holding the fallback line`
+    : general.released ? 'No front · relieved, the divisions wait in place'
     : `${attack ? 'Advancing' : 'Holding'} ${front.length} ${front.length === 1 ? 'province' : 'provinces'} · ${general.line ? 'drawn front' : target}`;
   const tip = `Front\nThe commander's sector of the border${general.target == null ? '' : ` with ${target}`}: ${front.length} provinces for ${commandSize(general)} divisions. `
     + 'Divisions take posts along it by themselves.\nPlanning grows while they hold their posts; an offensive spends it, halting resets it.'
@@ -265,7 +266,7 @@ function frontHtml(game, me, units) {
       <div class="ap-plan">
         <span class="ap-plan-meter"${tipAttr({ text: `Planning ${Math.round(ready * 100)}%\nAttacks gain from planning; each assault spends some of it.` })}><i style="width:${(ready * 100).toFixed(0)}%"></i></span>
         <b>${Math.round(ready * 100)}%</b>
-        <button class="ap-btn ${attack ? 'danger' : 'go'}" type="button" data-command-stance="${general.id}"${tipAttr({ text: attack ? 'Halt the offensive. Accumulated planning is lost; the army regroups. Key: O' : 'Start the offensive: divisions advance along the front. Planning carries into the attack. Key: O' })}>${attack ? `${glyph('halt', 'inline')} Halt` : `${glyph('advance', 'inline')} Offensive`}</button>
+        <button class="ap-btn ${attack ? 'danger' : 'go'}" type="button" data-command-stance="${general.id}"${tipAttr({ text: attack ? 'Halt the offensive. Accumulated planning is lost; the army regroups. Key: X' : 'Start the offensive: divisions advance along the front. Planning carries into the attack. Key: X' })}>${attack ? `${glyph('halt', 'inline')} Halt` : `${glyph('advance', 'inline')} Offensive`}</button>
       </div>
     </section>`;
 }
@@ -392,23 +393,43 @@ export function generalPickerHtml(game, me, list, { branch = BRANCH.ARMY, costLa
  * sarıyordu; dikey kart aynı genişliğe tek satır sığar. Tümensiz general
  * "yedek" olarak söner.
  */
-export function commandCardsHtml(game, me, { active = null, selected = 0, retireArm = null } = {}) {
+export function commandCardsHtml(game, me, { active = null, selected = 0, retireArm = null, empty = [] } = {}) {
+  const nameOf = (id) => game.world?.nations?.[id]?.name ?? 'Unknown';
   const cards = officersOf(me, BRANCH.ARMY).map((general) => {
     const size = commandSize(general);
     const advancing = general.stance === 'advance';
     const ready = clamp01(general.planning ?? 0);
     const first = general.name.split(' ')[0];
+    // Cephenin adı kartın ipucunda: oyuncu hangi generalin nereye baktığını
+    // kartı açmadan okur (boş cephe kartlarıyla aynı dil).
+    const frontNote = general.released ? 'No front: relieved, the divisions wait in place'
+      : general.line ? `Front: a drawn stretch of the border${general.line.facing?.length ? ` with ${general.line.facing.map(nameOf).join(', ')}` : ''}`
+        : general.target != null ? `Front: the whole border with ${nameOf(general.target)}`
+          : 'Front: automatic (every active front)';
+    const relTip = `Relieve ${general.name} of the front\nThe front is left without a commander; the divisions stay with ${general.name} and wait in place.`;
     const tip = `${general.name} · skill ${general.skill}/${MAX_SKILL}\n`
       + `${size ? `${size} divisions · ${advancing ? 'on the offensive' : 'holding the line'} · planning ${Math.round(ready * 100)}%` : 'In reserve: no divisions'}\n`
+      + `${frontNote}\n`
       + `Click: select the command${selected ? `\nRight-click: transfer the ${selected} selected ${selected === 1 ? 'division' : 'divisions'} here` : ''}`;
-    return `<button class="cmd-card${active?.id === general.id ? ' active' : ''}${advancing ? ' is-advancing' : ''}${size ? '' : ' is-idle'}"
+    return `<button class="cmd-card${active?.id === general.id ? ' active' : ''}${advancing ? ' is-advancing' : ''}${size ? '' : ' is-idle'}${general.released ? ' is-released' : ''}"
         type="button" data-general="${general.id}"${tipAttr({ text: tip })}>
         <span class="cmd-portrait">${subayPortresi(general)}</span>
         <span class="cmd-id"><b class="cmd-name">${esc(first)}</b><span class="cmd-stars">${stars(general.skill, MAX_SKILL)}</span></span>
         <span class="cmd-band">${size
-          ? `<em class="cmd-stance">${advancing ? 'Attack' : 'Hold'}</em><b class="cmd-size">${size}</b>`
+          ? `<em class="cmd-stance">${general.released ? 'Idle' : advancing ? 'Attack' : 'Hold'}</em><b class="cmd-size">${size}</b>`
           : '<em class="cmd-stance is-reserve">Reserve</em>'}<span class="cmd-plan"><i style="width:${(ready * 100).toFixed(0)}%"></i></span></span>
         <span class="cmd-x${retireArm === general.id ? ' armed' : ''}" role="button" data-cmd-retire="${general.id}" aria-label="Retire ${esc(general.name)}"${tipAttr({ text: retireArm === general.id ? `Click again to retire ${general.name}` : `Retire ${general.name}\nTwo clicks. ${size ? `Their ${size} divisions are left without a commander.` : 'They command no divisions.'}` })}>${glyph(retireArm === general.id ? 'check' : 'close', 'ctl')}</span>
+        ${size && !general.released ? `<span class="cmd-x cmd-rel" role="button" data-cmd-release="${general.id}" aria-label="Relieve ${esc(general.name)} of the front"${tipAttr({ text: relTip })}>${glyph('return', 'ctl')}</span>` : ''}
+      </button>`;
+  }).join('');
+  // Generali olmayan cepheler (HOI4 boş cephe): tık seçili generale atar.
+  const emptyCards = empty.map((row) => {
+    const name = nameOf(row.nationId);
+    const tip = `Front with ${name}: no commander\n${row.open} of ${row.total} border hexes are unheld.\nClick: give the whole front to ${active ? active.name : 'a commander without a front'}.`;
+    return `<button class="cmd-card cmd-empty" type="button" data-empty-front="${row.nationId}"${tipAttr({ text: tip })}>
+        <span class="cmd-portrait cmd-flag" data-flag-nation="${row.nationId}"></span>
+        <span class="cmd-id"><b class="cmd-name">${esc(name)}</b><span class="cmd-stars">${row.open} hexes open</span></span>
+        <span class="cmd-band"><em class="cmd-stance is-empty">Empty</em></span>
       </button>`;
   }).join('');
   const assignTip = selected
@@ -420,5 +441,5 @@ export function commandCardsHtml(game, me, { active = null, selected = 0, retire
       <span class="cmd-portrait cmd-plus">+</span>
       <span class="cmd-id"><b class="cmd-name">Assign</b><span class="cmd-stars">${selected ? `${selected} selected` : 'select first'}</span></span>
       <span class="cmd-band"><em class="cmd-stance is-reserve">New</em></span>
-    </button>${cards}`;
+    </button>${cards}${emptyCards}`;
 }

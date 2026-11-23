@@ -341,6 +341,12 @@ const RIVER_WIDTH_FAR = [0.9, 1.2, 1.6, 2.1, 2.7];
 
 const CITY_OFFSET = 0.3;
 const UNIT_ON_CITY_OFFSET = 0.22;
+/** Muharebede sayacın sınıra yaslanması (hex boyu payı): saldıran çok, savunan az. */
+const BATTLE_LEAN_ATTACK = 0.42;
+const BATTLE_LEAN_DEFEND = 0.2;
+/** Kareden kareye kayma süresi sınırları (ms); arası adımlar arasındaki gerçek süreye uyar. */
+const GLIDE_MIN_MS = 160;
+const GLIDE_MAX_MS = 900;
 
 /** Emir rozetleri; orders.js'teki ORDER değerleriyle eşleşir. */
 /**
@@ -2309,6 +2315,8 @@ export class Renderer {
     const k0 = P ? Math.floor((rect.minX - WRAP_X0) / P) : 0;
     const k1 = P ? Math.floor((rect.maxX - WRAP_X0) / P) : 0;
     if (this.counterRects) this.counterRects.length = 0;
+    if (this.unitHits) this.unitHits.length = 0;
+    this.glideFresh = true;
 
     this.lastDrawn = 0;
     for (let k = k0; k <= k1; k++) {
@@ -5209,6 +5217,11 @@ export class Renderer {
     // Yakın zoomda sayaç figüre erir; figürler döngü sonunda arkadan öne basılır.
     const miniBlend = this.minis.blendAt(zoom);
     this.minis.begin(world, zoom, miniBlend);
+    // Tıklama kutuları (ekran CSS px): game.unitAtScreen sayacın ÇİZİLDİĞİ yere bakar.
+    const hits = (this.unitHits ??= []);
+    const now = this.glideFrame(world);
+    const heads = (this.headQueue ??= []);
+    heads.length = 0;
 
     for (const unit of world.units) {
       const tile = unit.tile;
@@ -5217,7 +5230,9 @@ export class Renderer {
       }
       const stack = unitsOn(tile);
       if (stack.length > 1 && stack[0] !== unit) continue;
-      if (U && !U.pin(ctx, tile.x, tile.y)) continue;
+      // Çizim yeri: muharebede sınıra yaslanır, yürüyüşte eski kareden kayar (yalnız görsel).
+      const at = this.unitGlide(world, unit, stack, tile, now);
+      if (U && !U.pin(ctx, at.x, at.y)) continue;
       const nation = world.nations[unit.nationId];
       let side = sides.get(unit.nationId);
       if (!side) {
@@ -5226,21 +5241,31 @@ export class Renderer {
       }
       if (!this.counterVisible(side)) continue;
       this.minis.want(stack, zoom);
-      const mini = miniBlend > 0 ? this.minis.stack(ctx, stack, nation) : null;
+      let men = 0;
+      for (const member of stack) men += menUnderArms(member);
+      // Yön işareti: saldırının hedefi ya da yolun bir sonraki düğümü. Uzakta yalnız oyuncunun.
+      const aim = !U && (side === 'own' || zoom >= 0.34) ? this.headingOf(world, stack, tile) : null;
+      const mini = miniBlend > 0 ? this.minis.stack(ctx, stack, nation, at) : null;
       if (mini) {
         const plate = this.minis.plate(unit, stack, nation, side, stack.includes(selectedUnit), zoom,
-          (u) => compactMen(menUnderArms(u)));
+          () => compactMen(men));
         // Kutu figürleri de kapsar: şehir ve state adı askerin üstüne yazılmasın.
         if (T) {
           const { left: footL, right: footR, top: footT } = this.minis.foot;
           const boxL = Math.min(plate.left, footL);
           const boxR = Math.max(plate.left + plate.w, footR);
-          boxes.push({
+          const box = {
             x: (T.a * boxL + T.e) * sd,
             y: (T.d * footT + T.f) * sd,
             w: T.a * (boxR - boxL) * sd,
             h: T.d * (plate.top + plate.h - footT) * sd,
-          });
+          };
+          boxes.push(box);
+          hits.push({ unit, stack, x: box.x, y: box.y, w: box.w, h: box.h });
+        }
+        if (aim && miniBlend >= 1) {
+          const { left: footL, right: footR, top: footT } = this.minis.foot;
+          this.queueHeading(heads, at.x, at.y - (at.y - footT) * 0.35, (footR - footL) / 2, (at.y - footT) * 0.65, aim, side, zoom);
         }
         if (U) this.minis.flush(ctx);
         if (miniBlend >= 1) continue;
@@ -5249,9 +5274,9 @@ export class Renderer {
       const k = ze / zoom;
       const width = HEX_SIZE * 1.56 * k;
       const height = HEX_SIZE * 1.08 * k;
-      const y = tile.y + (tile.city ? HEX_SIZE * UNIT_ON_CITY_OFFSET : 0);
-      const left = tile.x - width / 2;
-      const top = y - height / 2;
+      const left = at.x - width / 2;
+      const top = at.y - height / 2;
+      if (aim) this.queueHeading(heads, at.x, at.y, width / 2, height / 2, aim, side, zoom);
 
       // Uzak LOD: bu ölçekte sayaç ~7 px — köşe yuvarlağı, gradyan ve
       // çubuklar okunmaz ama maliyeti okunur (ölçüldü: 655 birimlik dünyada
@@ -5266,13 +5291,19 @@ export class Renderer {
         // ve çerçevesiyle birlikte pişer: karede tek drawImage (bkz. farBadge).
         const badge = this.farBadge(nation, side, width, height);
         ctx.drawImage(badge.canvas, left - badge.pad, top - badge.pad, width + badge.pad * 2, height + badge.pad * 2);
+        if (T) this.pushUnitHit(hits, T, sd, unit, stack, left - badge.pad, top - badge.pad, width + badge.pad * 2, height + badge.pad * 2);
         continue;
       }
 
       if (T && !mini) boxes.push({ x: (T.a * left + T.e) * sd, y: (T.d * top + T.f) * sd, w: T.a * width * sd, h: T.d * height * sd });
+      // Yığın etiketi sağ üstte sayaçtan taşar (paintCounterSprite tabX/tabY): o da tıklanır.
+      if (T) {
+        const tab = stack.length > 1 ? height * 0.21 : 0;
+        this.pushUnitHit(hits, T, sd, unit, stack, left, top - tab, width + tab, height + tab);
+      }
       // Çoklu seçimde de: yığının herhangi bir tümeni seçiliyse sayaç seçilidir.
       const picked = unit === selectedUnit || stack.some((member) => chosen.has(member));
-      const sprite = this.unitSprite(unit, nation, Math.min(stack.length, 9), picked, side, ze);
+      const sprite = this.unitSprite(unit, nation, Math.min(stack.length, 9), picked, side, ze, men);
       if (mini) ctx.globalAlpha = this.minis.counterAlpha;
       ctx.drawImage(sprite.canvas, left - sprite.margin * k, top - sprite.margin * k, sprite.w * k, sprite.h * k);
       if (picked) this.drawPickFrame(ctx, left, top, width, height);
@@ -5280,6 +5311,204 @@ export class Renderer {
       ctx.globalAlpha = 1;
     }
     this.minis.flush(ctx);
+    this.drawHeadings(ctx, heads, zoom);
+    // Kayma sürüyorsa bir kare daha; bitince istek kesilir (sürekli döngü yok).
+    if (this.glideLive) this.requestFrame?.();
+  }
+
+  pushUnitHit(hits, T, sd, unit, stack, x, y, w, h) {
+    hits.push({ unit, stack, x: (T.a * x + T.e) * sd, y: (T.d * y + T.f) * sd, w: T.a * w * sd, h: T.d * h * sd });
+  }
+
+  /** Ekran noktasındaki çizili yığın (son çizilen üstte); kutu yoksa null. */
+  unitHitAt(sx, sy, pad = 2) {
+    const hits = this.unitHits;
+    if (!hits?.length) return null;
+    for (let i = hits.length - 1; i >= 0; i--) {
+      const h = hits[i];
+      if (sx >= h.x - pad && sx <= h.x + h.w + pad && sy >= h.y - pad && sy <= h.y + h.h + pad) return h.unit;
+    }
+    return null;
+  }
+
+  /** Ekran kutusuna değen çizili yığınların tümenleri (kutu seçimi). */
+  unitsInScreenBox(x0, y0, x1, y1) {
+    const found = new Set();
+    for (const h of this.unitHits ?? []) {
+      if (h.x > x1 || h.x + h.w < x0 || h.y > y1 || h.y + h.h < y0) continue;
+      for (const unit of h.stack) found.add(unit);
+    }
+    return found;
+  }
+
+  /** Yığının gittiği komşu kareye birim yön [dx, dy] ya da null: saldırı hedefi, yoksa yolun başı. */
+  headingOf(world, stack, tile) {
+    let to = null;
+    for (const member of stack) {
+      if (!member.battleId) continue;
+      if (!this.glideBattles) this.battleLean(world, member, tile);
+      const battle = this.glideBattles?.get(member.battleId);
+      const target = battle && world.get(battle.q, battle.r);
+      if (target && target !== tile) {
+        to = target;
+        break;
+      }
+    }
+    if (!to) to = stack.find((member) => member.path?.length)?.path[0] ?? null;
+    if (!to || to === tile) return null;
+    const P = world.wrapWidth || 0;
+    let dx = to.x - tile.x;
+    if (P) dx -= P * Math.round(dx / P);
+    const dy = to.y - tile.y;
+    const l = Math.hypot(dx, dy);
+    return l > 1e-6 ? [dx / l, dy / l] : null;
+  }
+
+  /** Yön işaretini sayacın/figürün kenarına kuyruğa alır (hw, hh: yarı boylar, dünya birimi). */
+  queueHeading(heads, x, y, hw, hh, dir, side, zoom) {
+    const [dx, dy] = dir;
+    // Dikdörtgen kenarına uzaklık + ekranda 2 px boşluk.
+    const edge = Math.min(Math.abs(dx) > 1e-6 ? hw / Math.abs(dx) : Infinity, Math.abs(dy) > 1e-6 ? hh / Math.abs(dy) : Infinity);
+    const d = edge + 2 / zoom;
+    heads.push({ x: x + dx * d, y: y + dy * d, dx, dy, side });
+  }
+
+  /**
+   * Küçük yön okları (Kerem: "saldırdığı veya ilerlediği yere doğru minik ama gözüken bir ok"):
+   * seçili birliğin uzun yürüyüş okundan (drawMarchArrow) ayrı, her yığında birkaç piksellik uç.
+   * Boy ekranda sabit; koyu kontur + taraf rengi dolgu her zeminde okunur.
+   */
+  drawHeadings(ctx, heads, zoom) {
+    if (!heads.length) return;
+    const u = 1 / zoom;
+    const len = 9 * u;
+    const half = 5 * u;
+    const fill = { own: '#9fe07a', ally: '#8fc3ef', hostile: '#f2735a', other: '#e8dcc0' };
+    ctx.save();
+    ctx.lineJoin = 'round';
+    for (const h of heads) {
+      const { x, y, dx, dy } = h;
+      const nx = -dy;
+      const ny = dx;
+      ctx.beginPath();
+      ctx.moveTo(x + dx * len, y + dy * len);
+      ctx.lineTo(x + nx * half, y + ny * half);
+      ctx.lineTo(x + dx * len * 0.3, y + dy * len * 0.3);
+      ctx.lineTo(x - nx * half, y - ny * half);
+      ctx.closePath();
+      ctx.lineWidth = 2.6 * u;
+      ctx.strokeStyle = 'rgba(8, 10, 12, 0.92)';
+      ctx.stroke();
+      ctx.fillStyle = fill[h.side] ?? fill.other;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** Kare başı: muharebe tablosu tembel kurulur, kayma bayrağı sıfırlanır. */
+  glideFrame() {
+    // Sarmal dünyanın her kopyası aynı saati okur: ikinci kopya kaymayı yeniden başlatmasın.
+    if (!this.glideFresh && this.glideNow != null) return this.glideNow;
+    this.glideFresh = false;
+    this.glideNow = performance.now();
+    this.glideLive = false;
+    this.glideBattles = null;
+    this.glideUnits = null;
+    this.unitGlides ??= new Map();
+    if (this.unitGlides.size > 6000) this.unitGlides.clear();
+    return this.glideNow;
+  }
+
+  /**
+   * Yığının çizim yeri (dünya birimi). Hedef: kare merkezi (şehirde biraz aşağı); muharebede
+   * saldıran saldırdığı sınıra, savunan saldırana doğru kayar (HOI4). Hedef değişince eski
+   * görünen yerden yeniye kayar: sim tümeni bir haftada kareden kareye atlatır, göz yürüyüş
+   * görür. Süre iki değişim arasındaki gerçek zamana uyar: hızlı oyunda kayma bitmeden yeni
+   * adım gelir ve hareket kesintisiz akar. Simülasyona yazmaz, zar çekmez.
+   */
+  unitGlide(world, unit, stack, tile, now) {
+    let x = tile.x;
+    let y = tile.y + (tile.city ? HEX_SIZE * UNIT_ON_CITY_OFFSET : 0);
+    const fighting = stack.find((member) => member.battleId);
+    if (fighting) {
+      const lean = this.battleLean(world, fighting, tile);
+      if (lean) {
+        x += lean[0];
+        y += lean[1];
+      }
+    }
+    const P = world.wrapWidth || 0;
+    let g = this.unitGlides.get(unit.id);
+    if (!g) {
+      g = { x, y, fx: x, fy: y, at: -1e9, span: GLIDE_MAX_MS, changed: now, out: { x, y } };
+      this.unitGlides.set(unit.id, g);
+      return g.out;
+    }
+    if (g.x !== x || g.y !== y) {
+      const shown = this.glidePos(g, now);
+      let jump = x - shown.x;
+      if (P) jump -= P * Math.round(jump / P);
+      // Çok uzun sıçrama (deniz aşırı, yeniden konuşlanma) kaymaz: harita boyunca süzülmesin.
+      if (Math.hypot(jump, y - shown.y) < HEX_SIZE * 14) {
+        g.span = Math.max(GLIDE_MIN_MS, Math.min(GLIDE_MAX_MS, (now - g.changed) * 0.9));
+        g.fx = x - jump;
+        g.fy = shown.y;
+        g.at = now;
+      } else g.at = -1e9;
+      g.changed = now;
+      g.x = x;
+      g.y = y;
+    }
+    const pos = this.glidePos(g, now);
+    if (now - g.at < g.span) this.glideLive = true;
+    g.out.x = pos.x;
+    g.out.y = pos.y;
+    return g.out;
+  }
+
+  glidePos(g, now) {
+    const t = Math.min(1, Math.max(0, (now - g.at) / g.span));
+    // Yumuşak kalkış ve duruş; zincirlenen adımda hız sıfıra düşmesin diye hafif.
+    const e = t * t * (3 - 2 * t) * 0.6 + t * 0.4;
+    return { x: g.fx + (g.x - g.fx) * e, y: g.fy + (g.y - g.fy) * e };
+  }
+
+  /** Muharebedeki yığının sınıra yaslanma payı (dünya birimi) ya da null. */
+  battleLean(world, unit, tile) {
+    if (!this.glideBattles) {
+      this.glideBattles = new Map();
+      for (const battle of world.battleSystem?.battles ?? []) this.glideBattles.set(battle.id, battle);
+    }
+    const battle = this.glideBattles.get(unit.battleId);
+    if (!battle) return null;
+    const P = world.wrapWidth || 0;
+    const target = world.get(battle.q, battle.r);
+    if (!target) return null;
+    let dx = 0;
+    let dy = 0;
+    let share = BATTLE_LEAN_ATTACK;
+    if (target !== tile) {
+      dx = target.x - tile.x;
+      dy = target.y - tile.y;
+    } else {
+      // Savunan: saldıranların geldiği yöne, daha az.
+      if (!this.glideUnits) this.glideUnits = new Map(world.units.map((u) => [u.id, u]));
+      share = BATTLE_LEAN_DEFEND;
+      for (const id of battle.attackers ?? []) {
+        const from = (typeof id === 'object' ? id : this.glideUnits.get(id))?.tile;
+        if (!from || from === tile) continue;
+        let ex = from.x - tile.x;
+        if (P) ex -= P * Math.round(ex / P);
+        const ey = from.y - tile.y;
+        const l = Math.hypot(ex, ey) || 1;
+        dx += ex / l;
+        dy += ey / l;
+      }
+    }
+    if (P) dx -= P * Math.round(dx / P);
+    const l = Math.hypot(dx, dy);
+    if (l < 1e-6) return null;
+    return [dx / l * HEX_SIZE * share, dy / l * HEX_SIZE * share];
   }
 
   /**
@@ -5428,7 +5657,7 @@ export class Renderer {
   }
 
   /** Sayaç sprite önbelleği; anahtar görsel durumun tamamını taşır. */
-  unitSprite(unit, nation, stackLen, selected, side = null, zoomEff = this.camera.zoom) {
+  unitSprite(unit, nation, stackLen, selected, side = null, zoomEff = this.camera.zoom, men = null) {
     // Zoom kovası: sprite 1.25 adımlı ölçek basamağında pişer, ara zoomlarda
     // blit ölçeklenir (≤%12 sapma — durağan kartta okunur fark bırakmıyor).
     // Kova ETKİN zoomdan: tavanlı sayaç o zoomun çizgi kalınlığıyla pişer.
@@ -5438,7 +5667,8 @@ export class Renderer {
       20 * Math.max(0, Math.min(1, unit.hp / Math.max(1, maxHpOf(unit)))),
     );
     const orgQ = Math.round(Math.max(0, Math.min(100, organizationOf(unit))) / 5);
-    const soldiers = compactMen(menUnderArms(unit));
+    // Yığının TOPLAM mevcudu (Kerem: "ünitenin her zaman 30k yazması mantıksız"); anahtara girer.
+    const soldiers = compactMen(men ?? menUnderArms(unit));
     // KIMIN ORDUSU: kunye cercevesi bunu soyler. Ulus rengi seridi tek basina
     // yetmiyordu — elli beş ulusun paleti birbirine yakin ve oyuncu kendi
     // birimini dusmanininkinden ayiramiyordu (kullanici bildirimi).
@@ -5521,10 +5751,12 @@ export class Renderer {
     if (flag) paintFlagChip(ctx, flag, fx, fy, fw, fh, px);
 
     // Yığın etiketi sağ üst köşeye çakılı; mevcut onun SOLUNA yaslanır.
-    const tabH = height * 0.36;
-    const tabW = tabH * 1.05;
-    const tabX = width - tabW * 0.72;
-    const tabY = -tabH * 0.3;
+    // Etiket province'teki tümen sayısıdır ve uzakta da okunmalı (Kerem: "3 daha görünür
+    // olsun"): eskiden sayacın üçte biri boyundaydı, rakam 4-5 px'e iniyordu.
+    const tabH = height * 0.5;
+    const tabW = tabH * 1.0;
+    const tabX = width - tabW * 0.62;
+    const tabY = -tabH * 0.42;
     if (detailed) {
       const right = spec.stackLen > 1 ? tabX - height * 0.06 : width - rim - height * 0.08;
       paintLabel(ctx, spec.soldiers, right, fy + fh / 2 + px * 0.3,
@@ -5558,7 +5790,7 @@ export class Renderer {
 
     if (spec.stackLen > 1) {
       paintStackTab(ctx, tabX, tabY, tabW, tabH, spec.stackLen,
-        `800 ${(tabH * 0.66).toFixed(2)}px ${FONT_UI}`, px);
+        `900 ${(tabH * 0.8).toFixed(2)}px ${FONT_UI}`, px);
     }
     return { canvas, margin, w, h };
   }
@@ -5639,12 +5871,12 @@ export class Renderer {
   drawBattleBalloon(ctx, x, y, zoom, odds, battle, siege = false, dir = [0, 1]) {
     // HOI4 İĞNESİ: emaye iğne (Kerem'in ChatGPT sayfası), ucu SALDIRI YÖNÜNE döner; renk
     // kimin kazandığı (oyuncu için yeşil kazanıyor, kehribar başa baş, kırmızı kaybediyor;
-    // başkalarının muharebesi gri). Oyukta amblem, altta yüzde. Boy ekranda sabit.
+    // başkalarının muharebesi gri). Oyukta gidişat sayısı. Boy ekranda sabit.
     const u = 1 / zoom;
-    // Uzakta küçülür (Kerem: "geriye çekince baloncuklar büyük"); yüzde 0.45 altında gizli.
-    const far = zoom < 0.45;
     const grow = Math.max(0, Math.min(1, (zoom - 0.3) / 0.7));
-    let well = (6 + 4.5 * grow * grow * (3 - 2 * grow)) * u;
+    // Oyuk sayıyı taşıyacak boyda: eskiden 6-10 px'lik oyukta amblem, sayı altta 9 px'lik
+    // ayrı bir yuvadaydı ve okunmuyordu (Kerem: "minnacık yazıyor").
+    let well = (9 + 4 * grow * grow * (3 - 2 * grow)) * u;
     // Üzerine gelince büyür, basınca kısa bir çökme (tıklama hissi).
     const hover = this.hoverBattleId === battle.id;
     const press = this.pressBattle?.id === battle.id ? (performance.now() - this.pressBattle.t) / 240 : 1;
@@ -5657,8 +5889,6 @@ export class Renderer {
     const color = odds.mine == null ? 'grey' : pct >= 55 ? 'green' : pct >= 45 ? 'amber' : 'red';
     const ring = { green: '#6fcf5a', amber: '#f0b53a', red: '#e8503a', grey: '#9aa4a8' }[color];
     const art = warEmblem(`pin-${color}`, () => this.onPlatesReady?.());
-    const name = siege ? 'shell' : odds.mine === 'defender' ? 'defend' : 'attack';
-    const medal = warEmblem(name, () => this.onPlatesReady?.());
     const angle = Math.atan2(dir[1], dir[0]);
     ctx.save();
     // Büyük resimden küçültme yüksek kalitede: varsayılan 'low' iğneyi pikselli gösteriyordu.
@@ -5694,28 +5924,23 @@ export class Renderer {
     }
     ctx.restore();
     ctx.save();
-    ctx.imageSmoothingQuality = 'high';
-    if (medal) ctx.drawImage(medal, x - well, y - well, well * 2, well * 2);
-    if (far) {
-      ctx.restore();
-      return;
-    }
-    // Yüzde: oyuğun altında, ucun karşı yanında (HOI4'teki gibi).
-    const nr = 8.5 * u;
-    const nx = x - dir[0] * well * 0.9;
-    const ny = y + well * 1.55;
+    // Oyuğun koyu zemini sayıyı iğnenin emayesinden ayırır. Amblem kalktı; kuşatma bilgisi
+    // kesik halkada kalır.
     ctx.beginPath();
-    ctx.arc(nx, ny, nr, 0, Math.PI * 2);
+    ctx.arc(x, y, well * 0.98, 0, Math.PI * 2);
     ctx.fillStyle = '#0d1114';
     ctx.fill();
-    ctx.lineWidth = 1.4 * u;
+    ctx.lineWidth = 1.3 * u;
     ctx.strokeStyle = ring;
+    if (siege) ctx.setLineDash([2.2 * u, 1.6 * u]);
     ctx.stroke();
-    ctx.font = `700 ${(pct === 100 ? 8 : 9.5) * u}px ${FONT_UI}`;
+    ctx.setLineDash([]);
+    const size = well * (pct === 100 ? 0.98 : 1.28);
+    ctx.font = `800 ${size.toFixed(2)}px ${FONT_UI}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#f2e6c8';
-    ctx.fillText(String(pct), nx, ny + 0.5 * u);
+    ctx.fillStyle = '#f6ecd2';
+    ctx.fillText(String(pct), x, y + size * 0.06);
     ctx.restore();
   }
 

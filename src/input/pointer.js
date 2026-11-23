@@ -152,13 +152,15 @@ export class PointerController {
     // Sağ tuş: tikta veya surukleyip birakista yuruyus emri.
     if (mouse && e.button === 2) {
       e.preventDefault();
-      // Cizim aracindayken sag tik araci birakir (HOI4: sag tik iptal).
+      const p = this.localPos(e);
+      // Cizim aracinda sag SURUKLEME cephenin bir parcasini cizer (HOI4: sag
+      // tus + surukle); suruklemeden birakilan sag tik araci birakir.
       if (this.handlers.isDrawMode?.()) {
-        if (this.rightDrag?.draw) this.rightDrag = null;
-        this.handlers.onDrawCancel?.();
+        this.rightDrag = { id: e.pointerId, points: [p], moved: 0, draw: true, right: true };
+        this.capture(e.pointerId);
+        this.handlers.onDrawStart?.(p.x, p.y);
         return;
       }
-      const p = this.localPos(e);
       // Durum capture'dan önce kurulur: capture başarısız olsa da çizim başlasın.
       this.rightDrag = { id: e.pointerId, points: [p], moved: 0 };
       this.capture(e.pointerId);
@@ -277,12 +279,20 @@ export class PointerController {
 
   onUp = (e) => {
     if (this.rightDrag?.id === e.pointerId) {
-      const { points, moved, draw } = this.rightDrag;
+      const { points, moved, draw, right } = this.rightDrag;
       const last = points[points.length - 1];
       this.rightDrag = null;
       this.release(e.pointerId);
       if (draw) {
-        this.handlers.onDrawEnd?.(points);
+        // Kısa basış çizgi değildir: sol tık sınırın tamamını atar (HOI4),
+        // sağ tık aracı bırakır. Eşik yürüyüş tıkıyla aynı.
+        if (moved < TAP_MOVE_LIMIT) {
+          if (right) this.handlers.onDrawCancel?.();
+          else if (this.handlers.onDrawTap) this.handlers.onDrawTap(last.x, last.y);
+          else this.handlers.onDrawEnd?.(points);
+        } else {
+          this.handlers.onDrawEnd?.(points);
+        }
         this.handlers.onChange?.();
         return;
       }

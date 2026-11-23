@@ -545,7 +545,7 @@ function callPlayer(game, me, defender, aggressor, bond, warAt, turn) {
   });
   const delegated = Boolean(me.delegation?.diplomacy);
   announce(game, me, {
-    kind: 'WAR', tier: TIER.MAJOR, key: `call:${aggressor.id}`, halt: !delegated, leader: defender.id,
+    kind: 'WAR', tier: TIER.MAJOR, key: `call:${aggressor.id}`, halt: !delegated, urgent: !delegated, leader: defender.id,
     title: `${defender.name} calls us to arms against ${aggressor.name}`,
     detail: `Join free, as a defender: no political power, no war of aggression. Or stay out: ${stayOutCost(bond, defender.name)}. Answer in Diplomacy (P) — ${Math.max(1, rec.expires - turn)} weeks.`,
   });

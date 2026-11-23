@@ -303,6 +303,9 @@ export class Screens {
         const photo = TAB_PHOTOS[screen];
         if (photo) btn.insertAdjacentHTML('afterbegin', `<span class="tab-photo" style="background-image:url(assets/kpi/${photo}.webp)" aria-hidden="true"></span>`);
         if (KEY_OF_TAB[screen]) btn.insertAdjacentHTML('beforeend', `<kbd class="tab-key" aria-hidden="true">${KEY_OF_TAB[screen]}</kbd>`);
+        // Üzerine gelince inen cam levha (hud.css "SEKME KAROSU: CAM"): sözde öğe değil, çünkü
+        // ::before AUTO lambasının, ::after etkin sekme hattının.
+        btn.insertAdjacentHTML('beforeend', '<i class="tab-glass" aria-hidden="true"></i>');
       }
     }
     document.getElementById('screen-close').onclick = () => this.close();
@@ -2070,6 +2073,35 @@ export class Screens {
         game.focusNation(game.world.nations[Number(btn.dataset.locate)]);
         this.close();
       };
+    }
+    // State'i haritada göster (Kerem 2026-11-23: "province'lere bir şey yapma ekranlarında, mesela
+    // penal states, o province'i görebilelim; menüden yönetme olmasın sadece"). Ekran kapanır,
+    // kamera state'in merkezine iner ve onu seçer: sol panel state'in kartını açar.
+    for (const btn of this.el.body.querySelectorAll('[data-goto-state]')) {
+      btn.onclick = (event) => {
+        event.stopPropagation();
+        const tile = game.world.provinces?.[Number(btn.dataset.gotoState)]?.center;
+        if (!tile) return;
+        this.close();
+        // Development tablosundaki state adıyla aynı yol (stateScreens data-uc-focus).
+        game.focusTile(tile);
+      };
+    }
+    // State araması: aynı paneldeki tablonun satırlarını adla süzer (yeniden kurmadan).
+    for (const input of this.el.body.querySelectorAll('[data-state-search]')) {
+      const apply = () => {
+        const q = input.value.trim().toLowerCase();
+        this.stateQuery = { ...(this.stateQuery ?? {}), [input.dataset.stateSearch]: input.value };
+        const table = input.closest('.k-panel, section, div')?.querySelector(`[data-state-table="${input.dataset.stateSearch}"]`);
+        for (const row of table?.querySelectorAll('.k-pol-tr:not(.head)') ?? []) {
+          row.hidden = Boolean(q) && !row.textContent.toLowerCase().includes(q);
+        }
+      };
+      input.value = this.stateQuery?.[input.dataset.stateSearch] ?? '';
+      input.oninput = apply;
+      // Arama kutusunda yazılan harfler oyunun kısayolları değildir (WASD, Space, F tuşları).
+      input.onkeydown = (event) => { if (event.key !== 'Escape') event.stopPropagation(); };
+      if (input.value) apply();
     }
     for (const btn of this.el.body.querySelectorAll('[data-nation]')) {
       btn.onclick = () => this.openDossier(Number(btn.dataset.nation));

@@ -45,7 +45,6 @@ import { FOCUS, FOCUSES, FOCUS_BY_ID, focusSlots, nextSlotAt } from '../game/foc
 import { focusBlockers, focusPreview, focusedStates, setFocus } from '../game/stateFocus.js';
 import { powerIncome } from '../game/politics.js';
 import { syncPartyTint } from './partyTint.js';
-import { WarBanners } from './warBanners.js';
 import {
   canRecruit, disband, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint,
   trainingWeeks,
@@ -227,7 +226,6 @@ const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select
 export class Hud {
   constructor(game) {
     this.game = game;
-    this.warBanners = new WarBanners(game);
     this.el = {
       seedChip: $('seed-chip'),
       seedValue: $('seed-value'),
@@ -378,12 +376,12 @@ export class Hud {
     const bar = this.el.warBar;
     const world = this.game.world;
     const me = world?.nations[this.game.turns.playerNation];
-    if (!bar || !me?.alive) { if (bar) bar.innerHTML = ''; this.warBanners.sync(world, me, []); return; }
+    if (!bar || !me?.alive) { if (bar) bar.innerHTML = ''; return; }
     const wars = world.nations.filter(
       (other) => other.alive && other.id !== me.id && atWar(world, me.id, other.id),
     );
-    // Yeni düşman: sekme şeridinin altından savaş sancakları iner (ui/warBanners.js).
-    this.warBanners.sync(world, me, wars);
+    // Savaş sancakları (ui/warBanners.js) kalktı: Kerem 2026-11-23 "savaşta dalgalanan bayrakların
+    // olmamasını istiyorum". Modül dosyada durur; savaş biçimli künye bayrağı kalır.
     // Künyedeki sancak da savaş biçimine geçer ya da barışla eski hâline döner.
     if (Boolean(wars.length) !== Boolean(this.topFlagWar)) this.mountTopFlag();
     // Ültimatomlar: savaş henüz yok ama geri sayım var (bildirimi aşağıda düşer).
@@ -757,6 +755,11 @@ export class Hud {
     // AUTO anahtarı çevrilince künyenin ışığı hemen yanar/söner.
     game.on('delegation', () => this.syncTabAuto());
     game.on('orderRefused', ({ text }) => this.flashHint(text));
+    // Haritadan verilen cephe emri ordu panelinin cephe satırını da değiştirir.
+    game.on('commandHint', (text) => {
+      this.flashHint(text);
+      if (game.selectedUnit) this.showTile(game.selected);
+    });
     // Deniz aşırı emrin makbuzu (game.noteCrossing) uzun bir cümledir: 4 sn.
     game.on('orderNote', ({ text }) => this.flashHint(text, { ms: 4000 }));
     // Donanma panelinin öncelik onayı (navyDock): plan neyi değiştirdi.
@@ -969,7 +972,7 @@ export class Hud {
         if (!this.clockLocked()) this.game.stepSpeed(-1);
         return;
       }
-      if (event.code === 'Home') {
+      if (event.code === 'Home' || event.code === 'Backspace') {
         event.preventDefault();
         this.game.focusCapital();
         return;
@@ -1072,7 +1075,32 @@ export class Hud {
         this.game.recallControlGroup(Number(digit), { focus: again });
         return;
       }
-      // H: bekle aç/kapa · X / Delete: dur (yürüyüş ve emir düşer) · O: taarruz.
+      // HOI4 savaş planı tuşları (hoi4.paradoxwikis.com/Hotkeys): Z cephe,
+      // C geri çekilme hattı; general seçiliyken X taarruz (HOI4'te taarruz
+      // oku), Delete planı siler. General yokken X / Delete tümenleri durdurur.
+      if (event.code === 'KeyZ' || event.code === 'KeyC') {
+        event.preventDefault();
+        this.toggleDrawTool(event.code === 'KeyZ' ? 'front' : 'fallback');
+        return;
+      }
+      if (event.code === 'Delete' && this.game.activeGeneral && !event.shiftKey) {
+        event.preventDefault();
+        const name = this.game.activeGeneral.name;
+        this.game.clearCommandLines();
+        this.flashHint(`${name}: plan deleted, automatic front`);
+        this.showCommand();
+        this.showTile(this.game.selected);
+        return;
+      }
+      if (event.code === 'KeyX' && this.game.activeGeneral && !event.shiftKey) {
+        event.preventDefault();
+        const stance = this.game.toggleOffensive();
+        this.flashHint(stance === 'advance' ? `${this.game.activeGeneral.name}: offensive` : `${this.game.activeGeneral.name}: holding the line`);
+        this.showCommand();
+        this.showTile(this.game.selected);
+        return;
+      }
+      // H: bekle aç/kapa · X / Delete: dur (yürüyüş ve emir düşer).
       if (event.code === 'KeyH' && this.game.selection.length) {
         event.preventDefault();
         const hold = this.game.toggleHoldSelection();
@@ -1087,12 +1115,12 @@ export class Hud {
         this.showTile(this.game.selected);
         return;
       }
-      if (event.code === 'KeyO' && this.game.activeGeneral) {
+      // O: HOI4'te tümen dökümü (Division Overview); bizde ordunun ekranı.
+      // Taarruz X'e taşındı (HOI4'ün taarruz oku tuşu).
+      if (event.code === 'KeyO' && !event.shiftKey) {
         event.preventDefault();
-        const stance = this.game.toggleOffensive();
-        this.flashHint(stance === 'advance' ? `${this.game.activeGeneral.name}: offensive` : `${this.game.activeGeneral.name}: holding the line`);
-        this.showCommand();
-        this.showTile(this.game.selected);
+        const button = document.querySelector('#tab-bar [data-screen="military"]');
+        if (button?.offsetParent) this.screens?.toggle('military');
         return;
       }
       // B: haritada seçili kendi state'inde Develop odağını aç/kapat (eski
@@ -1188,14 +1216,17 @@ export class Hud {
       game.toggleOffensive();
       this.showCommand();
     };
-    // Hat araçları (HOI4): araç açıkken haritada sol sürükleme çizer.
-    const tool = (kind) => () => {
-      game.setDrawTool(game.drawTool === kind ? null : kind);
-      if (game.drawTool) this.flashHint(kind === 'front' ? 'Drag along the border to draw the front' : 'Drag inside your territory to draw the fallback line');
+    // Hat araçları (HOI4): Front açıkken sınıra tık bütün cepheyi verir, sağ
+    // (ya da sol) sürükleme bir parça çizer. Z ve C tuşları da buraya gelir.
+    $('btn-draw-front').onclick = () => this.toggleDrawTool('front');
+    $('btn-draw-fallback').onclick = () => this.toggleDrawTool('fallback');
+    $('btn-release-front').onclick = () => {
+      game.releaseFront();
       this.showCommand();
+      this.showTile(game.selected);
     };
-    $('btn-draw-front').onclick = tool('front');
-    $('btn-draw-fallback').onclick = tool('fallback');
+    // Bütün planlar her generali bağlar: iki tık (kartın emeklilik ✕'i gibi).
+    $('btn-clear-all').onclick = () => this.clearAllPlans();
     $('btn-fall-back').onclick = () => {
       const on = game.toggleFallBack();
       if (on != null) this.flashHint(on ? `${game.activeGeneral.name}: falling back` : `${game.activeGeneral.name}: back to the front`);
@@ -1206,6 +1237,12 @@ export class Hud {
       game.clearCommandLines();
       this.showCommand();
       this.showTile(game.selected);
+    };
+    // HOI4: Delete Order düğmesine sağ tık ordunun bütün emirlerini siler;
+    // bizde bir generalin tek planı olduğundan bütün kadronun planları.
+    $('btn-clear-lines').oncontextmenu = (event) => {
+      event.preventDefault();
+      this.clearAllPlans();
     };
     // Hedef seçici oyunun kendi açılır listesidir (ui/dropdown.js): yerel
     // select'in listesini işletim sistemi beyaz bir pencereyle çiziyordu.
@@ -1226,6 +1263,40 @@ export class Hud {
         this.showCommand();
       };
     }
+  }
+
+  /** Front / Fallback aracı aç-kapa (düğme ve Z/C). */
+  toggleDrawTool(kind) {
+    const { game } = this;
+    if (!game.activeGeneral) {
+      this.flashHint('Select a commander first: click a commander card');
+      return;
+    }
+    game.setDrawTool(game.drawTool === kind ? null : kind);
+    if (game.drawTool) {
+      this.flashHint(kind === 'front'
+        ? 'Click a border for the whole front · right-drag for a stretch'
+        : 'Right-drag inside your territory to draw the fallback line', { ms: 2400 });
+    }
+    this.showCommand();
+  }
+
+  /** Bütün planları sil: ilk tık kurar (3 sn), ikincisi siler. */
+  clearAllPlans() {
+    const now = performance.now();
+    if (!this.clearAllArm || this.clearAllArm < now) {
+      this.clearAllArm = now + 3000;
+      clearTimeout(this.clearAllTimer);
+      this.clearAllTimer = setTimeout(() => { this.clearAllArm = 0; this.showCommand(); }, 3000);
+      this.flashHint('Click again to delete every commander\'s plan');
+      this.showCommand();
+      return;
+    }
+    clearTimeout(this.clearAllTimer);
+    this.clearAllArm = 0;
+    this.game.clearAllPlans();
+    this.showCommand();
+    this.showTile(this.game.selected);
   }
 
   /**
@@ -1256,7 +1327,19 @@ export class Hud {
     // yıldız, tümen sayısı, duruş ve plan çubuğu (eski 58 px kutuda portre
     // 26 px'lik köşeye sıkışıp rozetin altında kalıyordu).
     const retireArm = this.retireArm && this.retireArm.until > performance.now() ? this.retireArm.id : null;
-    el.commandBar.innerHTML = commandCardsHtml(game, me, { active, selected, retireArm });
+    const empty = game.emptyFronts();
+    el.commandBar.innerHTML = commandCardsHtml(game, me, { active, selected, retireArm, empty });
+    for (const host of el.commandBar.querySelectorAll('[data-flag-nation]')) {
+      const nation = game.world.nations[Number(host.dataset.flagNation)];
+      if (nation) mountFlag(host, nation, 58, 39, 'crest');
+    }
+    for (const card of el.commandBar.querySelectorAll('[data-empty-front]')) {
+      card.onclick = () => {
+        game.staffEmptyFront(Number(card.dataset.emptyFront));
+        this.showCommand();
+        this.showTile(game.selected);
+      };
+    }
 
     // Boolean sart: togglePanel `force ?? !acik` okur ve null "cevir" demektir.
     // General secili degilken arac cubugu her showCommand'da gorunup kayboluyordu.
@@ -1308,7 +1391,16 @@ export class Hud {
         fallBack.innerHTML = active.fallingBack
           ? `${glyph('advance', 'ctl')} To front` : `${glyph('return', 'ctl')} Fall back`;
       }
-      $('btn-clear-lines').disabled = !active.line && !active.fallback?.length;
+      $('btn-clear-lines').disabled = !active.line && !active.fallback?.length
+        && active.target == null && !active.released;
+      $('btn-release-front').disabled = Boolean(active.released) || !active.divisions?.length;
+      const all = $('btn-clear-all');
+      const armed = this.clearAllArm > performance.now();
+      all.classList.toggle('armed', armed);
+      if (all.dataset.armed !== String(armed)) {
+        all.dataset.armed = String(armed);
+        all.querySelector('.tool-txt').textContent = armed ? ' Sure?' : ' All';
+      }
     }
 
     for (const btn of el.commandBar.querySelectorAll('[data-general]')) {
@@ -1317,6 +1409,16 @@ export class Hud {
       // Kartın köşesindeki ✕: iki tıkla emeklilik (Kerem: "aşağıda generalleri
       // silme yok"). İlk tık 3 sn ✓'ye döner; ikincisi emekli eder, tümenleri
       // komutasız kalır. Kart düğmesine geçmesin diye yayılma kesilir.
+      // Kartın sol köşesi: görevden al (cephe boşalır, tümenler kalır).
+      const rel = btn.querySelector('[data-cmd-release]');
+      if (rel) {
+        rel.onclick = (event) => {
+          event.stopPropagation();
+          game.releaseFront(general);
+          this.showCommand();
+          this.showTile(game.selected);
+        };
+      }
       const x = btn.querySelector('[data-cmd-retire]');
       if (x) {
         x.onclick = (event) => {
@@ -2417,7 +2519,7 @@ export class Hud {
       </div>`;
     }).join('');
     const cabinet = me.focusAuto !== false;
-    const delegated = isDelegated(me, 'reforms');
+    const delegated = isDelegated(me, 'development');
     const autoTip = delegated
       ? 'The cabinet (AUTO) puts a focus in every empty slot each quarter.\nTurn it off to keep the slots you clear empty.'
       : 'Government is not on AUTO: empty slots stay empty either way.';

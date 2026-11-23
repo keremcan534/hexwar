@@ -11,7 +11,7 @@
 import { atWar, makePeace, nationStrength, relation, warLossesOf } from './diplomacy.js';
 import { controllerOf } from './control.js';
 import { soldiersOf } from './units.js';
-import { annexInfamy } from './infamy.js';
+import { annexInfamy, repeatScaleOf } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { deed } from './relations.js';
 import { TOOK_LAND_MAX } from './dipDefs.js';
@@ -1114,7 +1114,7 @@ export function signPeace(game, a, b, offer) {
   // dongu kuruyordu (koalisyon savasi -> ilhak -> daha cok sohret; olculdu:
   // zirve 286, esik ustu 1175 ulke-hafta/520hf). Fren isirmali, dunyayi yakmamali.
   const repeats = relation(world, a, b)?.wars ?? 1;
-  const repeatScale = Math.min(2.5, 1 + 0.5 * Math.max(0, repeats - 1));
+  const repeatScale = repeatScaleOf(repeats);
   const transfer = (keys, from, to) => {
     const taken = [];
     const capital = protectedCapital(world, to, from);

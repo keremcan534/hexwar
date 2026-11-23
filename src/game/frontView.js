@@ -14,7 +14,7 @@
 // çekilmez. Levha generalin son hesaplanan cephesini (general.front) okur;
 // komuta adımı onu haftada bir, seçim ve çizim anında tazeler.
 
-import { atWar } from './diplomacy.js';
+import { atWar, inCrisis } from './diplomacy.js';
 import { isAllied } from './alliances.js';
 import { controllerOf } from './control.js';
 import { BRANCH, frontTilesOf, officersOf } from './command.js';
@@ -218,4 +218,45 @@ export function frontStrengths(world, playerId) {
   const geometry = frontGeometry(world, playerId);
   const counts = frontCounts(world, geometry);
   return geometry.fronts.map((front, index) => ({ ...front, ...counts[index] }));
+}
+
+/**
+ * BOŞ CEPHELER (HOI4: generali olmayan cephe). Savaştığımız ya da
+ * ültimatomdaki her komşu için o ulusa bakan sınır karelerimiz; tümenli bir
+ * generalin cephesinde olmayanlar "boş" sayılır. Haritadaki boşluk çizgisi
+ * (game.frontGaps) aynı karelerdir; burada ulus başına toplanır ki kartı
+ * tıklanıp generale atanabilsin. Salt okunur.
+ *
+ * @returns {{ nationId:number, open:number, total:number, tiles:object[] }[]}
+ */
+export function emptyFronts(world, playerId) {
+  const me = world?.nations?.[playerId];
+  if (!me?.alive) return [];
+  const foes = new Set(world.nations
+    .filter((n) => n.alive && n.id !== playerId
+      && (atWar(world, playerId, n.id) || inCrisis(world, n.id, playerId)))
+    .map((n) => n.id));
+  if (!foes.size) return [];
+  const held = new Set();
+  for (const general of officersOf(me, BRANCH.ARMY)) {
+    if (!general.divisions?.length) continue;
+    for (const tile of frontTilesOf(world, general)) held.add(tile);
+  }
+  const rows = new Map();
+  for (const tile of world.tiles) {
+    if (!landNode(tile) || controllerOf(tile) !== playerId) continue;
+    const facing = new Set();
+    for (const near of nodeNeighbors(world, tile)) {
+      const owner = landNode(near) ? controllerOf(near) : -1;
+      if (foes.has(owner)) facing.add(owner);
+    }
+    for (const id of facing) {
+      const row = rows.get(id) ?? { nationId: id, open: 0, total: 0, tiles: [] };
+      row.total++;
+      if (!held.has(tile)) { row.open++; row.tiles.push(tile); }
+      rows.set(id, row);
+    }
+  }
+  return [...rows.values()].filter((row) => row.open > 0)
+    .sort((a, b) => b.open - a.open || a.nationId - b.nationId);
 }

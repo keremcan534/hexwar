@@ -434,6 +434,7 @@ export function toggleStance(world, general) {
 export function setTarget(world, general, nationId) {
   if (!general) return null;
   general.target = nationId == null ? null : Number(nationId);
+  general.released = false;
   general.planning = 0;
   refreshFront(world, general);
   return general.target;
@@ -842,6 +843,7 @@ export function setFrontLine(world, general, tiles) {
     facing: [...facing].sort((x, y) => x - y),
     path: thinPoints(stroke).map(pointOf),
   };
+  general.released = false;
   general.planning = 0;
   return { ok: true, tiles: refreshFront(world, general) };
 }
@@ -894,6 +896,69 @@ export function clearLines(world, general, which = 'all') {
   refreshFront(world, general);
 }
 
+/**
+ * Tıklanan karenin baktığı yabancı ulus (HOI4: cephe aracıyla sınıra tık).
+ * Yabancı kareye tıklandıysa sahibi; kendi sınır karemize tıklandıysa en çok
+ * komşu karesi olan yabancı ulus (eşitlikte küçük kimlik: kararlı).
+ */
+export function facingNationAt(world, nationId, tile) {
+  if (!tile || tile.terrain.water) return null;
+  const owner = controllerOf(tile);
+  if (owner >= 0 && owner !== nationId) return owner;
+  if (owner !== nationId) return null;
+  const count = new Map();
+  for (const near of nodeNeighbors(world, tile)) {
+    if (near.terrain.water) continue;
+    const other = controllerOf(near);
+    if (other >= 0 && other !== nationId) count.set(other, (count.get(other) ?? 0) + 1);
+  }
+  let best = null;
+  let bestN = 0;
+  for (const [id, n] of count) {
+    if (n > bestN || (n === bestN && id < best)) { best = id; bestN = n; }
+  }
+  return best;
+}
+
+/**
+ * BÜTÜN ORTAK SINIR CEPHE OLUR (HOI4: Front aracı açıkken bir ülkenin
+ * sınırına tık). Çizilmiş dilim silinir, hedef o ulus olur: cephe her hafta
+ * o ulusla gerçek temas hattından yeniden kurulur, sınır oynasa da kopmaz.
+ * Aynı ulusa bakan iki general sınırı tümen oranında bölüşür (nationSectors).
+ * @returns {{ ok: boolean, error?: string, tiles?: object[] }}
+ */
+export function assignNationFront(world, general, nationId) {
+  if (!general || branchOf(general) === BRANCH.NAVY) return { ok: false, error: 'Only an army commander holds a front.' };
+  const id = Number(nationId);
+  const entry = scanBorders(world)[general.nationId];
+  if (!Number.isInteger(id) || !entry?.byNation.get(id)?.length) {
+    return { ok: false, error: 'Click the border of a country you share a land border with.' };
+  }
+  general.line = null;
+  general.target = id;
+  general.released = false;
+  general.planning = 0;
+  return { ok: true, tiles: refreshFront(world, general) };
+}
+
+/**
+ * GÖREVDEN ALMA: general cepheyi bırakır, tümenleri onda kalır ve yerinde
+ * bekler. Cephe boşalır (frontGaps/emptyFronts onu gösterir) ve başka bir
+ * generale atanabilir. Taarruz biter: cephesi olmayan grup ilerleyemez.
+ */
+export function releaseFront(world, general) {
+  if (!general || branchOf(general) === BRANCH.NAVY) return false;
+  general.released = true;
+  general.line = null;
+  general.target = null;
+  general.fallingBack = false;
+  general.stance = STANCE.HOLD;
+  general.planning = 0;
+  for (const unit of divisionsOf(world, general)) unit.post = null;
+  refreshFront(world, general);
+  return true;
+}
+
 /** Grubun en az yarısı bozgundan çekiliyorsa hat yarılmıştır. */
 const COLLAPSE_SHARE = 0.5;
 
@@ -905,6 +970,13 @@ function nationSectors(world, nation, borders, unitById = null) {
   const out = new Map();
   const groups = new Map();
   for (const general of officersOf(nation, BRANCH.ARMY)) {
+    // Görevden alınan general cephe tutmaz: tümenleri yerinde bekler
+    // (assignPosts boş cephede mevki dağıtmaz, march yürütmez). Sektör
+    // bölüşümüne de girmez ki cephe öbür generallere kalsın.
+    if (general.released) {
+      out.set(general.id, []);
+      continue;
+    }
     // Çizilmiş cephe paylaşılmaz: oyuncu o dilimi bu generale verdi. Dilim
     // boşaldıysa (karşıdaki ülke sınırdan çekildi) otomatik cepheye düşer.
     const drawn = general.line ? lineFront(world, general, borders) : null;

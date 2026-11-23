@@ -177,7 +177,8 @@ export const ALLIANCE_RULES = {
   /** YZ oyuncuya ancak oyuncunun gözünden bu çekicilik varsa teklif eder (oyuncu kendi karar verir). */
   PLAYER_PLAUSIBLE: 0,
   BREAK_POWER: 10,
-  BREAK_INFAMY: 30,
+  // 30 → 36 (2026-11-23): şöhret kademeli; müttefik eşiğin üst kademesinde döner.
+  BREAK_INFAMY: 36,
   COOLDOWN: 104,
   /** Bu kadar yeni bir "bizi yalnız bıraktı" kaydı bozmaya sebeptir. */
   CAUSE_WEEKS: 104,
@@ -249,7 +250,8 @@ export const NAP = {
   AI_MAX: 2,
   AI_MIN_POWER: 35,
   AI_PEER: 0.5,
-  AI_DENOUNCE_INFAMY: 22,
+  // 22 → 30 (2026-11-23): eşiğe değmek paktı hemen yakmaz (kademeli şöhret).
+  AI_DENOUNCE_INFAMY: 30,
 };
 
 /**

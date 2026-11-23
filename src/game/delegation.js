@@ -21,7 +21,7 @@ export const DELEGATION_AREAS = {
     // anahtardı: birinde kapatılan AUTO dördünde birden kapanıyordu (Kerem
     // 2026-11-15: "auto tuşu bozulmuş, çoğu şeyi açıp kapatıyor"). Ticaret
     // yasası kendi alanına ayrıldı; hat ağırlıkları zaten hat başına Auto
-    // kipidir, Development'ın otomasyonu yoktur (fonun hedefi simülasyon kuralı).
+    // kipidir, Development'ın anahtarı kendi alanıdır (aşağıda).
     screen: 'budget',
     desc: 'The ministry sets how well the people are fed. When the state’s bills outrun its output it cuts school spending, lengthens the working week or, in peacetime, stands down a regiment.',
   },
@@ -48,6 +48,16 @@ export const DELEGATION_AREAS = {
     // panelinde durur (iki hap sekme şeridine sığmaz, şeridi kaydırır).
     inPanel: true,
     desc: 'The cabinet picks the national agenda that fits the country best when the last one completes.',
+  },
+  development: {
+    id: 'development',
+    name: 'Development',
+    // Kerem 2026-11-23: "Development kısmında auto yok". Fon kademeyi zaten
+    // kendisi alır (investment.buyDevelopment); oyuncunun state başına işi
+    // odaktır. AUTO, YZ'nin kuralını (stateFocus.autoFocus) çeyrekte bir koşar.
+    // Eskiden bu iş Government'ın içindeydi: eski kayıt onun hâlini devralır.
+    screen: 'construction',
+    desc: 'The planning office fills every empty focus slot each quarter by the rule the AI uses: Develop where a level is within a year, Integration for conquered states, Assimilation for large minorities — and clears a focus that is done. The fund buys levels by itself: Develop-focus states first, then the best gain for the cost.',
   },
   recruitment: {
     id: 'recruitment',
@@ -98,7 +108,7 @@ export function headerAreaOf(screen) {
  * savaş ilan eder — ilk haftada habersiz bir savaş başlatmak "kolaylık" değil.
  */
 export const DEFAULT_AUTO_AREAS = [
-  'economy', 'trade', 'reforms', 'agenda', 'recruitment', 'research',
+  'economy', 'trade', 'reforms', 'agenda', 'development', 'recruitment', 'research',
 ];
 
 /**
@@ -207,6 +217,11 @@ export function restoreDelegation(nation, saved) {
     if (!Object.hasOwn(saved, 'trade')) {
       state.trade = Boolean(saved.economy);
       if (saved.since?.economy != null) state.since.trade = saved.since.economy;
+    }
+    // State odağı Government'tan ayrıldı: eski kayıt onun hâliyle açar.
+    if (!Object.hasOwn(saved, 'development')) {
+      state.development = Boolean(saved.reforms);
+      if (saved.since?.reforms != null) state.since.development = saved.since.reforms;
     }
     // Son eylem satırı sınırlıdır: alan başına bir kayıt, fazlası atılır.
     for (const id of DELEGATION_IDS) {

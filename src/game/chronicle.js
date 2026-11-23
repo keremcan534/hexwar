@@ -83,6 +83,7 @@ export function announce(game, nation, spec) {
     key: spec.key ?? null,
     ttl: spec.ttl,
     halt: spec.halt,
+    urgent: spec.urgent ?? false,
     actions: spec.actions ?? null,
     leader: spec.leader ?? null,
   });

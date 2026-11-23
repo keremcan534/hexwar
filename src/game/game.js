@@ -40,15 +40,17 @@ import { controllerOf } from './control.js';
 import { loadFromSlot, savedInfo, saveToSlot } from './save.js';
 import { AUTO_SLOT, newSlotId } from './saveStore.js';
 import {
-  FLEET_ORDER, ORDER, clearOrder, executeOrders, idleUnits, setFleetOrder, setOrder,
+  FLEET_ORDER, FRONT_ORDER, ORDER, clearOrder, executeOrders, frontsToAuto, idleUnits, setFleetOrder,
+  setFrontOrder, setOrder,
 } from './orders.js';
+import { emptyFronts } from './frontView.js';
 import {
   BREAK_ORGANIZATION, MAX_ASSAULT_WIDTH, assaultWidth, battleAt, estimateBattle, selectAssault,
   startBattle,
 } from './battles.js';
 import {
   BRANCH, STANCE, aggressionInfo, applyPlayerCommandDefaults, assignDivisions, branchOf, clearLines,
-  divisionsOf, fallbackTilesOf, frontTilesOf, generalOfArmy, officersOf, refreshFront,
+  divisionsOf, facingNationAt, fallbackTilesOf, frontTilesOf, generalOfArmy, officersOf, refreshFront,
   restoreAiCommandDefaults, setFallbackLine, setFallingBack, setFrontLine, setTarget, toggleStance,
 } from './command.js';
 
@@ -69,6 +71,8 @@ const EVENTS = [
   'delegation',
   // Sağ tık emri reddedildi: sebep haritada kısa satırla söylenir (hud.flashHint).
   'orderRefused',
+  // Haritadan verilen cephe emrinin makbuzu (sınıra tık, Ctrl + tık): hud.flashHint.
+  'commandHint',
   // Oyuncuya açılan olay kartı (bkz. eventCards.js).
   'card',
   // Kayit yazildi (otomatik ya da elle): ayar paneli etiketini tazeler.
@@ -205,7 +209,8 @@ export class Game {
       onDoubleTap: (x, y) => this.handleDoubleTap(x, y),
       onHover: (x, y) => this.handleHover(x, y),
       onChange: () => this.requestRender(),
-      onRightTap: (x, y) => this.handleRightTap(x, y),
+      // Ctrl + sağ tık bir cepheye: o planın bütün tümenleri seçilir (HOI4).
+      onRightTap: (x, y, mods) => (mods?.ctrl && this.selectFrontAt(x, y)) || this.handleRightTap(x, y),
       // Sağ sürükleme de yürüyüş emridir: bırakılan yer hedeftir. Cephe artık
       // elle çizilmiyor (bkz. command.js), sürüklemenin başka bir işi yok.
       onRightDragEnd: (points) => {
@@ -217,6 +222,8 @@ export class Game {
       onDrawStart: (x, y) => this.extendStroke(x, y, true),
       onDrawMove: (x, y) => this.extendStroke(x, y),
       onDrawEnd: () => this.finishStroke(),
+      // Araç açıkken sürüklemeden tık: o ülkeyle bütün ortak sınır (HOI4).
+      onDrawTap: (x, y) => this.drawTap(x, y),
       onDrawCancel: () => this.setDrawTool(null),
       onMarqueeStart: (x, y) => this.beginMarquee(x, y),
       onMarqueeMove: (rect) => this.updateMarquee(rect),
@@ -326,7 +333,8 @@ export class Game {
       // İğne saldırı yönüne göre kayar: yerini son karede çizen renderer bilir.
       const pin = this.renderer.battlePins?.get(battle.id) ?? { x: tile.x, y: tile.y - HEX_SIZE * 0.8 };
       const p = this.camera.worldToScreenNear(pin.x, pin.y, sx);
-      if (Math.hypot(p.x - sx, p.y - sy) <= (far ? 11 : 18)) return battle;
+      // İğnenin oyuğu kadar: sınıra yaslanan saldıran sayacın tıklamasını çalmasın.
+      if (Math.hypot(p.x - sx, p.y - sy) <= (far ? 10 : 13)) return battle;
     }
     return null;
   }
@@ -341,6 +349,10 @@ export class Game {
     const at = this.camera.screenToWorld(sx, sy);
     const mini = renderer.minis?.unitAt(at.x, at.y);
     if (mini) return mini;
+    // Son karede ÇİZİLEN kutu (sayaç, yığın etiketi, figür + levha): sayaç muharebede sınıra
+    // yaslanır ve yürürken kayar, kare merkezine bakan yarıçap onu ıskalıyordu.
+    const drawn = renderer.unitHitAt?.(sx, sy);
+    if (drawn) return drawn;
     const hitRadius = Math.max(9, HEX_SIZE * 0.92 * renderer.counterZoom());
     const player = this.turns.playerNation;
     // Taraf yalnız üçüncü taraf gizliyken sorulur (her fare hareketinde koşar).
@@ -389,6 +401,7 @@ export class Game {
     const tile = hitUnit?.tile ?? this.tileAtScreen(sx, sy);
     // SHIFT EKLER, CTRL ÇIKARIR (HOI4/RTS). Eyalet seçimi değişmez: oyuncu
     // ordu topluyordur, altındaki province paneli araya girmesin.
+    if (mods.ctrl && this.assignSelectionAt(tile)) return;
     if (mods.shift || mods.ctrl) {
       const own = unitsOn(tile).filter((u) => u.nationId === this.turns.playerNation);
       if (own.length) {
@@ -415,9 +428,15 @@ export class Game {
     //   2. tik  -> ordu birakilir, yalniz eyalet secili kalir
     // Kare degistiginde her zaman ordu kipiyle baslanir; bos kare zaten
     // yalnizca eyalet secer.
+    // 2026-11-23 (Kerem: "üniteleri pek seçemiyorum"): artık sayaç çizildiği yerden tıklanır
+    // (renderer.unitHitAt), yani "sayaca mı zemine mi" ayrımı güvenilir. Sayacın KENDİSİNE
+    // tık her zaman orduyu seçer; ikinci tıkla bırakma yalnız aynı karenin ZEMİNİNDE geçerli.
+    // Eskiden aynı sayaca iki kez tıklayan oyuncu seçimini kaybediyordu.
     const own = unitsOn(tile).filter((u) => u.nationId === this.turns.playerNation);
+    const onCounter = Boolean(this.renderer.unitHitAt?.(sx, sy) || this.renderer.minis?.unitAt?.(
+      this.camera.screenToWorld(sx, sy).x, this.camera.screenToWorld(sx, sy).y));
     const sameTile = previous === tile && tile != null;
-    const armyActive = sameTile && own.length > 0
+    const armyActive = sameTile && !onCounter && own.length > 0
       && own.some((unit) => this.selection.includes(unit));
     this.selectUnits(armyActive ? [] : own);
     this.emit('select', tile);
@@ -813,10 +832,12 @@ export class Game {
     const from = this.camera.screenToWorld(rect.x, rect.y);
     const to = this.camera.screenToWorld(rect.x + rect.w, rect.y + rect.h);
     const shown = this.renderer.minis?.stacksInBox(from.x, from.y, to.x, to.y);
+    // Kutu, sayacın çizildiği yere değerse de seçer (kayan ve sınıra yaslanan sayaç).
+    const drawn = this.renderer.unitsInScreenBox?.(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
     for (const unit of this.world.units) {
       if (unit.nationId !== this.turns.playerNation || unit.hp <= 0) continue;
       const p = this.camera.worldToScreenNear(unit.tile.x, unit.tile.y, midX);
-      if (shown?.has(unit) || (p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h)) {
+      if (shown?.has(unit) || drawn?.has(unit) || (p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h)) {
         picked.push(unit);
       }
     }
@@ -1087,9 +1108,137 @@ export class Game {
     this.drawTool = null;
     this.canvas?.classList?.toggle('is-drawing', false);
     if (!result.ok) this.emit('orderRefused', { tile: null, text: result.error });
+    else this.emit('commandHint', `${general.name}: ${kind === 'front' ? 'front drawn' : 'fallback line drawn'}`);
     this.gapStamp = (this.gapStamp ?? 0) + 1;
     this.emit('command', general);
     this.requestRender();
+  }
+
+  /**
+   * Front aracıyla tık (sürüklemesiz): tıklanan sınırın karşısındaki ulusla
+   * bütün temas hattı seçili generalin cephesi olur. Geri çekilme hattı
+   * tıkla kurulmaz (kendi toprağımızda çizilir), araç açık kalır.
+   */
+  drawTap(sx, sy) {
+    const kind = this.drawTool;
+    const general = this.activeGeneral;
+    this.drawStroke = null;
+    if (!kind || !general) return;
+    if (kind !== 'front') {
+      this.emit('orderRefused', { tile: null, text: 'Drag inside your territory to draw the fallback line.' });
+      this.requestRender();
+      return;
+    }
+    const me = this.turns.playerNation;
+    const nationId = facingNationAt(this.world, me, this.tileAtScreen(sx, sy));
+    this.assignFront(general, nationId);
+  }
+
+  /** Generale bir ulusla bütün ortak cepheyi verir (araç, boş cephe kartı). */
+  assignFront(general, nationId) {
+    if (!general) return false;
+    const result = nationId == null
+      ? { ok: false, error: 'Click the border of a neighbouring country.' }
+      : setFrontOrder(this.world, general, FRONT_ORDER.NATION, nationId);
+    // Iska tık aracı kapatmaz: oyuncu sınırı yeniden dener.
+    if (result.ok) {
+      this.drawTool = null;
+      this.canvas?.classList?.toggle('is-drawing', false);
+    }
+    if (!result.ok) this.emit('orderRefused', { tile: null, text: result.error });
+    else this.emit('commandHint', `${general.name}: front with ${this.world.nations[nationId]?.name ?? 'them'}`);
+    this.gapStamp = (this.gapStamp ?? 0) + 1;
+    this.emit('command', general);
+    this.requestRender();
+    return result.ok;
+  }
+
+  /** Görevden al: cephe boşalır, tümenler generalde kalır. */
+  releaseFront(general = this.activeGeneral) {
+    if (!general) return false;
+    const ok = setFrontOrder(this.world, general, FRONT_ORDER.NONE).ok;
+    if (ok) this.emit('commandHint', `${general.name}: relieved of the front`);
+    this.gapStamp = (this.gapStamp ?? 0) + 1;
+    this.emit('command', general);
+    this.requestRender();
+    return ok;
+  }
+
+  /** Bütün planları sil: her general otomatik cepheye, taarruzlar durur. */
+  clearAllPlans() {
+    const nation = this.world?.nations[this.turns.playerNation];
+    if (!nation) return 0;
+    const changed = frontsToAuto(this.world, nation);
+    this.drawTool = null;
+    this.canvas?.classList?.toggle('is-drawing', false);
+    this.gapStamp = (this.gapStamp ?? 0) + 1;
+    this.emit('commandHint', changed ? `All plans deleted (${changed} ${changed === 1 ? 'commander' : 'commanders'})` : 'No plans to delete');
+    this.emit('command', this.activeGeneral);
+    this.requestRender();
+    return changed;
+  }
+
+  /** Generali olmayan cepheler, ulus başına (komuta şeridi kartları). */
+  emptyFronts() {
+    const world = this.world;
+    const me = this.turns?.playerNation;
+    if (!world || me == null || me < 0) return [];
+    const key = `${world.turn}:${this.gapStamp ?? 0}`;
+    if (this.emptyCache?.key === key) return this.emptyCache.rows;
+    const rows = emptyFronts(world, me);
+    this.emptyCache = { key, rows };
+    return rows;
+  }
+
+  /**
+   * Boş cepheye general: seçili general varsa o, yoksa cephesi olmayan
+   * (görevden alınmış ya da tümensiz değil, en az yüklü) ilk general.
+   */
+  staffEmptyFront(nationId) {
+    const nation = this.world?.nations[this.turns.playerNation];
+    if (!nation) return null;
+    let general = this.activeGeneral;
+    if (!general) {
+      const pool = officersOf(nation, BRANCH.ARMY).filter((g) => g.divisions?.length);
+      general = pool.find((g) => g.released) ?? pool.find((g) => g.target == null && !g.line) ?? null;
+    }
+    if (!general) {
+      this.emit('orderRefused', { tile: null, text: 'Select a commander first, then click the empty front.' });
+      return null;
+    }
+    return this.assignFront(general, nationId) ? general : null;
+  }
+
+  /** Karenin bulunduğu cephe kimin? (oyuncunun tümenli generalleri) */
+  generalAtFront(tile) {
+    if (!tile) return null;
+    for (const { general, tiles } of this.playerFronts()) {
+      if (tiles.includes(tile)) return general;
+    }
+    return null;
+  }
+
+  /**
+   * Ctrl + sol tık bir cepheye: seçili tümenler o generale geçer (HOI4: Ctrl +
+   * tık plana atar). Kare seçili bir tümeni taşıyorsa eski anlam (seçimden
+   * çıkar) kalır.
+   */
+  assignSelectionAt(tile) {
+    if (!this.selection.length || !tile) return false;
+    if (unitsOn(tile).some((u) => this.selection.includes(u))) return false;
+    const general = this.generalAtFront(tile);
+    if (!general) return false;
+    const moved = this.transferSelection(general);
+    if (moved) this.emit('commandHint', `${moved} ${moved === 1 ? 'division' : 'divisions'} assigned to ${general.name}`);
+    return moved > 0;
+  }
+
+  /** Ctrl + sağ tık bir cepheye: o generalin bütün tümenleri seçilir. */
+  selectFrontAt(sx, sy) {
+    const general = this.generalAtFront(this.tileAtScreen(sx, sy));
+    if (!general) return false;
+    this.selectGeneral(general);
+    return true;
   }
 
   /** Geri çekil / cepheye dön (seçili general). */
@@ -1102,10 +1251,14 @@ export class Game {
     return on;
   }
 
-  /** Seçili generalin çizilen hatlarını siler. */
+  /**
+   * Seçili generalin planını siler (HOI4 Delete): çizgiler, hedef ve görevden
+   * alma düşer, cephe otomatiğe döner. `which` yalnız bir hattı silmek içindir.
+   */
   clearCommandLines(which = 'all') {
     const general = this.activeGeneral;
     if (!general) return;
+    if (which === 'all') setFrontOrder(this.world, general, FRONT_ORDER.AUTO);
     clearLines(this.world, general, which);
     this.gapStamp = (this.gapStamp ?? 0) + 1;
     this.emit('command', general);

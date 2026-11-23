@@ -21,7 +21,7 @@ import {
 } from './diplomacy.js';
 import { allianceAppeal, allianceVerdict, alliesOf, formAlliance, isAllied, MAX_ALLIES } from './alliances.js';
 import { capitalProvinceOf, invalidateWarCosts, provinceValue, realmShare, warScore } from './peace.js';
-import { INFAMY_COALITION, addInfamy, provinceAnnexInfamy } from './infamy.js';
+import { INFAMY_COALITION, addInfamy, provinceAnnexInfamy, repeatScaleOf } from './infamy.js';
 import { isMilitia, regimentCount } from './units.js';
 import { TIER, announce, remember } from './chronicle.js';
 import { calendarYear } from './calendar.js';
@@ -609,7 +609,7 @@ export function issueDemand(game, a, bId, provinceId) {
     });
     const delegated = Boolean(b.delegation?.diplomacy);
     announce(game, b, {
-      kind: 'CRISIS', tier: TIER.MAJOR, key: `demand:${rec.id}`, halt: !delegated, ttl: 0,
+      kind: 'CRISIS', tier: TIER.MAJOR, key: `demand:${rec.id}`, halt: !delegated, urgent: !delegated, ttl: 0,
       tile: province.center ?? null, leader: a.id,
       title: `${a.name} demands ${provinceLabel(province)}`,
       detail: `Yield it, or refuse and they hold a free cause for war for a year. Unanswered in ${DEMAND.WINDOW} weeks, the cabinet decides as ${a.name} expects: ${verdict.yield ? 'yield' : 'refuse'} (${verdictParts(verdict)}). Answer in Diplomacy (P).`,
@@ -635,7 +635,7 @@ function applyYield(game, a, b, province) {
   const turn = turnOf(game);
   const rec = relation(world, a.id, b.id);
   const repeats = rec?.wars ?? 0;
-  const repeatScale = Math.min(2.5, 1 + 0.5 * Math.max(0, repeats - 1));
+  const repeatScale = repeatScaleOf(repeats);
   // Şöhret devirden ÖNCE ölçülür (vassals.annexVassal gibi): halk ve yurt
   // yeni sahibin kabul ettikleriyle karşılaştırılır.
   const infamy = DEMAND.YIELD_INFAMY_SHARE * provinceAnnexInfamy(world, province, a) * repeatScale;

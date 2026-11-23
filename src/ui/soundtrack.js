@@ -151,6 +151,30 @@ function once(target, type) {
 
 const between = ([min, max]) => min + Math.random() * (max - min);
 
+/** Müzik seçicinin sırası: kayıtların kendisi, baştan sona. */
+export const PLAYLIST = Object.values(TRACKS);
+const MODE_KEY = 'hexwar:music-mode';
+const TRACK_KEY = 'hexwar:music-track';
+/** Oyuncunun seçtiği parça bitince sıradakine geçmeden önceki nefes (sn). */
+const PLAYLIST_GAP = 4;
+const wholeTrack = (track) => ({ id: `track:${track.id}`, track, from: 0, to: track.duration - 0.3, tail: 3 });
+
+function readPref(key, fallback) {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writePref(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Depolama kapalı: tercih oturumla sınırlı kalır.
+  }
+}
+
 export class Soundtrack {
   constructor(game, menu) {
     this.game = game;
@@ -175,6 +199,12 @@ export class Soundtrack {
     this.run = 0;
     this.gapTimer = 0;
     this.soonTimer = 0;
+    // Müzik seçici (ui/musicPicker.js): 'auto' = yönetmen seçer, 'track' =
+    // oyuncunun parçası ve ardından sıradakiler, 'off' = sessiz.
+    this.mode = readPref(MODE_KEY, 'auto');
+    if (!['auto', 'track', 'off'].includes(this.mode)) this.mode = 'auto';
+    this.choice = TRACKS[readPref(TRACK_KEY, '')] ? readPref(TRACK_KEY, '') : PLAYLIST[0].id;
+    this.listeners = new Set();
 
     // Menü kapanınca müzik gelir, açılınca menünün kendi müziğine yer açar.
     new MutationObserver(() => this.syncMenu()).observe(document.body, { attributes: true, attributeFilter: ['class'] });
@@ -271,8 +301,72 @@ export class Soundtrack {
       for (const track of Object.values(TRACKS)) this.library.url(track);
       this.ended = Boolean(this.game.turns?.victory);
       this.edges = null;
+      if (this.mode === 'track') this.playChoice(FADES.open);
       this.evaluate(true);
     }
+    this.notify();
+  }
+
+  // ---- müzik seçici ------------------------------------------------------
+
+  /** Seçici değişikliği dinler (çalan parça, kip). */
+  onChange(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  notify() {
+    for (const fn of this.listeners) fn(this.describe());
+  }
+
+  /** Yönetmene bırak: hâlin bölümü yumuşak geçişle gelir. */
+  setAuto() {
+    this.setMode('auto');
+    if (!this.active) return;
+    this.mood = null;
+    this.moment = null;
+    this.run++;
+    this.current?.release(FADES.calm.out);
+    this.current = null;
+    this.evaluate(true);
+  }
+
+  /** Oyuncunun parçası: baştan çalar, bitince listede sıradakine geçer. */
+  playTrack(id) {
+    if (!TRACKS[id]) return;
+    this.choice = id;
+    writePref(TRACK_KEY, id);
+    this.setMode('track');
+    this.playChoice(FADES.rise);
+  }
+
+  /** Önceki/sonraki: elle seçim kipine geçirir. */
+  step(dir) {
+    const at = PLAYLIST.findIndex((t) => t.id === (this.mode === 'track' ? this.choice : this.current?.section?.track.id ?? this.choice));
+    const next = PLAYLIST[(Math.max(0, at) + dir + PLAYLIST.length) % PLAYLIST.length];
+    this.playTrack(next.id);
+  }
+
+  stop() {
+    this.setMode('off');
+    this.run++;
+    clearTimeout(this.gapTimer);
+    this.moment = null;
+    this.current?.release(FADES.calm.out / 2);
+    this.current = null;
+    this.notify();
+  }
+
+  setMode(mode) {
+    this.mode = mode;
+    writePref(MODE_KEY, mode);
+    this.notify();
+  }
+
+  playChoice(fade) {
+    if (!this.active) return;
+    this.moment = null;
+    this.playSection(wholeTrack(TRACKS[this.choice]), fade);
   }
 
   /** Olay sonrası kısa gecikmeyle bir kez değerlendir (hafta dilimlenirken çok kez gelir). */
@@ -313,6 +407,8 @@ export class Soundtrack {
   }
 
   settle(force = false) {
+    // Oyuncu parçasını seçtiyse ya da kapattıysa yönetmen yalnız okur.
+    if (this.mode !== 'auto') return;
     const want = this.wantMood;
     if (!want || want === this.mood) return;
     const outbreak = isWarMood(want) && !isWarMood(this.mood);
@@ -372,6 +468,7 @@ export class Soundtrack {
     this.current = deck;
     this.lastSection = section;
     deck.begin(section, url, fade.in);
+    this.notify();
   }
 
   scheduleNext(seconds) {
@@ -381,7 +478,14 @@ export class Soundtrack {
 
   /** Bölüm ya da vurgu bitti: istenen hâlin sıradaki bölümüne geç. */
   next() {
-    if (!this.active) return;
+    if (!this.active || this.mode === 'off') return;
+    if (this.mode === 'track') {
+      const at = PLAYLIST.findIndex((t) => t.id === this.choice);
+      this.choice = PLAYLIST[(at + 1) % PLAYLIST.length].id;
+      writePref(TRACK_KEY, this.choice);
+      this.playChoice(FADES.resume);
+      return;
+    }
     this.moment = null;
     this.mood = this.wantMood ?? this.mood ?? 'peace';
     this.playSection(this.pick(this.mood), FADES.resume);
@@ -392,8 +496,10 @@ export class Soundtrack {
     const { tail } = deck.section;
     deck.release(tail);
     this.current = null;
-    const gap = this.moment ? 0.4 : between(MOODS[this.mood ?? 'peace'].gap);
+    let gap = this.moment ? 0.4 : between(MOODS[this.mood ?? 'peace'].gap);
+    if (this.mode === 'track') gap = PLAYLIST_GAP;
     this.scheduleNext(tail + gap);
+    this.notify();
   }
 
   tick() {
@@ -408,7 +514,7 @@ export class Soundtrack {
 
   playMoment(id) {
     const def = MOMENTS[id];
-    if (!this.active || !def) return;
+    if (!this.active || !def || this.mode !== 'auto') return;
     const active = this.moment ? MOMENTS[this.moment] : null;
     if (active && active.priority >= def.priority) return;
     const now = performance.now();
@@ -436,6 +542,9 @@ export class Soundtrack {
   describe() {
     const deck = this.current;
     return {
+      mode: this.mode,
+      choice: this.choice,
+      active: this.active,
       mood: this.mood,
       want: this.wantMood,
       moment: this.moment,

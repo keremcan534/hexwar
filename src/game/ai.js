@@ -897,6 +897,14 @@ export function runDelegatedAI(game, nation, rng) {
     autoLineWeights(game.world, nation, { rifles: mobilizationRifleReserve(game.world, nation) });
     autoFeed(nation);
   }
+  // Boş odak yuvası Development'ın işidir (eskiden Government'ın içindeydi,
+  // aynı hafta ve aynı kural; YZ ulusları bu yoldan geçmez). Oyuncunun koyduğu odak
+  // yerinde kalır; odak listesinden "kabine dokunmasın" derse (focusAuto
+  // false) boşalttığı yuvalar boş kalır.
+  if (delegationActive(nation, 'development', turn)
+    && (turn + nation.id) % 13 === 0 && nation.focusAuto !== false && autoFocus(game.world, nation)) {
+    noteDelegated(game, nation, 'development', 'A state focus was set.', 'A focus slot was empty.');
+  }
   if (delegationActive(nation, 'reforms', turn)) {
     const lawsBefore = JSON.stringify(nation.politics?.laws ?? {});
     politicsAI(game, nation, { appoint: false });
@@ -910,13 +918,6 @@ export function runDelegatedAI(game, nation, rng) {
     if (manageAcceptance(game, nation)) {
       noteDelegated(game, nation, 'reforms', 'A minority was made an accepted culture.',
         'Their provinces were close to revolt and they are numerous enough to matter.');
-    }
-    // Boş odak yuvası da hükûmetin işidir; oyuncunun koyduğu odak yerinde kalır.
-    // Oyuncu odak listesinden "kabine dokunmasın" derse (focusAuto false)
-    // boşalttığı yuvalar boş kalır: yoksa sildiği odak bir çeyrekte geri geliyordu.
-    if ((turn + nation.id) % 13 === 0 && nation.focusAuto !== false && autoFocus(game.world, nation)) {
-      noteDelegated(game, nation, 'reforms', 'A state focus was set.',
-        'A focus slot was empty.');
     }
     // Kirik kume bir hukumet sorunudur: devredilmisse hukumet cozer.
     const broken = manageBrokenProvinces(game, nation);

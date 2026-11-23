@@ -146,7 +146,7 @@ export class NotificationCenter {
     // Sonucu olan olay zamani durdurur. Yalnizca YENI kartta: tekrar eden
     // olay (ayni anahtar) oyuncuyu tekrar tekrar duraklatmamali. Varolussal
     // olay (tier 3) turu ne olursa olsun durdurur.
-    const halt = meta.halt ?? (kind.halt || tier >= 3);
+    const halt = haltsUnder(pausePolicyOf(this.game), meta.halt ?? (kind.halt || tier >= 3), tier, meta.urgent);
     if (halt) {
       // Sebep saatin uzerinde yazsin: kor oyun testinde oyuncu durmus saati
       // "oyun yavas" sandi, cunku hicbir yer "kart durdurdu" demiyordu.
@@ -195,4 +195,24 @@ export class NotificationCenter {
     this.active = [];
     this.game.emit('notify-clear', null);
   }
+}
+
+/**
+ * Saati durduran olayların süzgeci (Settings → Gameplay → Pause on events).
+ * Kerem 2026-11-23: "oyun sürekli duruyor her bir şey olduğunda". Varsayılan
+ * `major`: yalnız oyuncunun kararını bekleyen an (`urgent`: bize savaş ilanı,
+ * çağrı, talep, koalisyon) ve varoluşsal olay (tier 3) durdurur; geri kalan
+ * duran kartlar zilde bekler. `all` eski davranıştır, `never` hiç durmaz.
+ */
+export const PAUSE_POLICIES = ['major', 'all', 'never'];
+
+export function pausePolicyOf(game) {
+  const v = game?.pausePolicy;
+  return PAUSE_POLICIES.includes(v) ? v : 'major';
+}
+
+export function haltsUnder(policy, wantsHalt, tier = 0, urgent = false) {
+  if (!wantsHalt || policy === 'never') return false;
+  if (policy === 'all') return true;
+  return Boolean(urgent) || tier >= 3;
 }

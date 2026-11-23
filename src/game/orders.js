@@ -12,6 +12,10 @@ import { clearDirective } from './movement.js';
 import { isMoving } from './units.js';
 import { POLICY_AREAS, POLICY_ORDER } from './policyDefs.js';
 import { ensureFleets, fleetsOf, setFleetMission } from './navy.js';
+import { isDelegated, setDelegation } from './delegation.js';
+import {
+  BRANCH, STANCE, assignNationFront, clearLines, officersOf, refreshFront, releaseFront, setStance,
+} from './command.js';
 
 export const ORDER = { AUTO: 'auto', HOLD: 'hold' };
 
@@ -62,6 +66,59 @@ export function setPolicyOrder(nation, area, mode) {
   return true;
 }
 
+/**
+ * CEPHE EMRİ — generalin AUTO/HOLD'u. Cephe çizimi de atama da generale
+ * yazılır, tümene değil (ev ödevi testi: kırk tümen tek generalle tek tık).
+ *   AUTO    — hedefsiz: savaştaki bütün sınır, sektörü kadro böler
+ *   NATION  — bir ulusla bütün temas hattı (HOI4: cephe aracıyla sınıra tık)
+ *   LINE    — sınırdan elle çizilmiş dilim (command.setFrontLine yazar)
+ *   NONE    — görevden alındı: cephe yok, tümenler yerinde
+ */
+export const FRONT_ORDER = { AUTO: 'auto', NATION: 'nation', LINE: 'line', NONE: 'none' };
+
+export function frontOrderOf(general) {
+  if (!general) return null;
+  if (general.released) return FRONT_ORDER.NONE;
+  if (general.line) return FRONT_ORDER.LINE;
+  return general.target == null ? FRONT_ORDER.AUTO : FRONT_ORDER.NATION;
+}
+
+/** Döner: { ok, error?, tiles? } (LINE çizimle verilir, buradan değil). */
+export function setFrontOrder(world, general, mode, nationId = null) {
+  if (!general || !branchOfArmy(general)) return { ok: false, error: 'Only an army commander holds a front.' };
+  if (mode === FRONT_ORDER.NATION) return assignNationFront(world, general, nationId);
+  if (mode === FRONT_ORDER.NONE) return { ok: releaseFront(world, general), tiles: [] };
+  if (mode === FRONT_ORDER.AUTO) {
+    general.released = false;
+    general.target = null;
+    clearLines(world, general, 'front');
+    return { ok: true, tiles: refreshFront(world, general) };
+  }
+  return { ok: false, error: 'Unknown front order.' };
+}
+
+const branchOfArmy = (general) => (general.branch ?? BRANCH.ARMY) === BRANCH.ARMY;
+
+/**
+ * BÜTÜN PLANLARI SİL (HOI4: Delete Order düğmesine sağ tık). Her kara
+ * generali otomatik cepheye döner: çizgiler, geri çekilme hattı, hedef ve
+ * görevden alma düşer, taarruz durur. Tek tık, kadro boyuyla büyümez.
+ * Döner: planı değişen general sayısı.
+ */
+export function frontsToAuto(world, nation) {
+  let changed = 0;
+  for (const general of officersOf(nation, BRANCH.ARMY)) {
+    const had = general.line || general.fallback?.length || general.target != null
+      || general.released || general.stance === STANCE.ADVANCE;
+    general.released = false;
+    general.target = null;
+    setStance(world, general, STANCE.HOLD);
+    clearLines(world, general, 'all');
+    if (had) changed++;
+  }
+  return changed;
+}
+
 export function setOrder(unit, type, target = null) {
   // HOLD ve AUTO oyuncunun onceki hedefini gecersiz kilar: "dur" diyen de
   // "sen bilirsin" diyen de o emirden vazgecmis demektir.
@@ -104,4 +161,18 @@ export function executeOrders(game, nationId, rng) {
     ) continue;
     if (unit.order.type === ORDER.AUTO) runUnitAI(game, unit, rng);
   }
+}
+
+/**
+ * KALKINMA EMRİ. State odağı state başına bir iştir (otuz state'te otuz tık):
+ * AUTO onu planlama dairesine bırakır, YZ'nin `stateFocus.autoFocus` kuralı
+ * çeyrekte bir boş yuvaları doldurur (ai.js). Ekran anahtarı aynı alandır.
+ */
+export function developmentOrder(nation) {
+  return isDelegated(nation, 'development') ? ORDER.AUTO : ORDER.HOLD;
+}
+
+export function setDevelopmentOrder(game, nation, mode) {
+  if (!Object.values(ORDER).includes(mode)) return false;
+  return setDelegation(game, nation, 'development', mode === ORDER.AUTO);
 }

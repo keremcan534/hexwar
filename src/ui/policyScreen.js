@@ -15,6 +15,7 @@ import {
   cancelFusion, closeCamp, openCamp, setCampIntake, setCampRegime, startFusion,
 } from '../game/culturePolicy.js';
 import { POLICY_ORDER } from '../game/policyDefs.js';
+import { glyph } from './icons/glyphs.js';
 
 const signedPts = (value) => `${value >= 0 ? '+' : '−'}${Math.abs(value)}`;
 const toneClass = { harsh: 'neg', neutral: '', kind: 'pos' };
@@ -30,10 +31,10 @@ function orderPill(order) {
  * etiket bir kez yazılır, satır 26 piksel, sütunlar içeriğe göre sabit.
  * `columns`: [etiket, genişlik]; ilk sütun ad, son sütun düğmedir.
  */
-function policyTable(columns, rows) {
+function policyTable(columns, rows, tableId = '') {
   const cols = columns.map((column) => column[1]).join(' ');
   const cell = (html, i) => `<span class="${i === 0 ? 'n' : ''}">${html}</span>`;
-  return `<div class="k-pol-table" style="--cols:${cols}">
+  return `<div class="k-pol-table" style="--cols:${cols}"${tableId ? ` data-state-table="${tableId}"` : ''}>
     <div class="k-pol-tr head">${columns.map((column, i) => cell(esc(column[0]), i)).join('')}</div>
     ${rows.map((row) => `<div class="k-pol-tr">${row.map(cell).join('')}</div>`).join('')}
   </div>`;
@@ -125,6 +126,13 @@ function occupationPanel(view, state, order) {
   });
 }
 
+/** State adı: tıklayınca harita o state'e iner (screens.bind data-goto-state). */
+const stateLink = (row) => `<button type="button" class="k-state-link" data-goto-state="${row.id}"${tipAttr({ text: `${row.name}
+Show on the map` })}>${esc(row.name)}${glyph('locate', 'inline')}</button>`;
+
+/** Uzun state listesinin üstünde arama; süzme screens.bind'de. */
+const stateSearch = (id) => `<input type="search" class="k-state-search" data-state-search="${id}" placeholder="Find a state…" aria-label="Find a state" autocomplete="off" spellcheck="false">`;
+
 function campPanel(view, state, order) {
   const c = view.camps;
   // Rejimler tablodur: seçmeden önce dört rejimin bedeli yan yana okunur.
@@ -137,12 +145,12 @@ function campPanel(view, state, order) {
   }));
   const camps = c.camps.map((row) => {
     const key = `close:${row.id}`;
-    return [esc(row.name), `${formatPopulation(row.inmates)} / ${formatPopulation(row.capacity)}`, money(row.output, 1), formatPopulation(row.deaths), num(row.unrest, 1),
+    return [stateLink(row), `${formatPopulation(row.inmates)} / ${formatPopulation(row.capacity)}`, money(row.output, 1), formatPopulation(row.deaths), num(row.unrest, 1),
       `<button type="button" class="k-btn sm${state.confirm === key ? ' confirming' : ''}" data-pol-close="${row.id}"${tipAttr({ text: 'Close this penal state\nThe inmates stay where they are, free.' })}>${state.confirm === key ? 'Confirm' : 'Close'}</button>`];
   });
   const sites = c.camps.length >= c.cap ? [] : c.candidates.map((row) => {
     const key = `open:${row.id}`;
-    return [esc(row.name), formatPopulation(row.population), pct(row.foreign),
+    return [stateLink(row), formatPopulation(row.population), pct(row.foreign),
       `<button type="button" class="k-btn sm danger${state.confirm === key ? ' confirming' : ''}" data-pol-open="${row.id}"${row.blockers.length ? blockedAttr(row.blockers) : tipAttr({ text: `Make this a penal state\nCost: ${c.openPower} PP, infamy +${c.openInfamy}.\nThe state's unrest climbs, stability falls, and if it is captured the world learns everything.` })}>${state.confirm === key ? 'Confirm' : 'Designate'}</button>`];
   });
   const peoples = c.camps.length ? c.peoples.map((row) => {
@@ -151,7 +159,7 @@ function campPanel(view, state, order) {
       `<button type="button" class="k-btn sm${row.on ? ' on' : ' danger'}${state.confirm === key ? ' confirming' : ''}" data-pol-intake="${row.id}"${!row.on && row.blockers.length ? blockedAttr(row.blockers) : tipAttr({ text: row.on ? 'Stop sending them. Those already held stay held.' : `Send them to the penal states\nInfamy +${c.intakeInfamy}. Their movement grows and kin states turn against us.` })}>${state.confirm === key ? 'Confirm' : row.on ? 'Stop' : 'Send'}</button>`];
   }) : [];
   const peopleTable = peoples.length ? `<div><h4 class="k-sub">Peoples sent here</h4>${policyTable([['People', 'minmax(0,1fr)'], ['Count', '58px'], ['Share', '44px'], ['Movement', '66px'], ['', '78px']], peoples)}</div>` : '';
-  const siteTable = sites.length ? `<div><h4 class="k-sub">Designate a state · ${c.openPower} PP</h4>${policyTable([['State', 'minmax(0,1fr)'], ['People', '58px'], ['No rights', '62px'], ['', '86px']], sites)}</div>` : '';
+  const siteTable = sites.length ? `<div><h4 class="k-sub k-sub-search">Designate a state · ${c.openPower} PP${sites.length > 3 ? stateSearch('penal-sites') : ''}</h4>${policyTable([['State', 'minmax(0,1fr)'], ['People', '58px'], ['No rights', '62px'], ['', '86px']], sites, 'penal-sites')}</div>` : '';
   const stat = (label, value, tone = '') => `<span class="k-pol-stat"><small>${label}</small><b class="${tone}">${value}</b></span>`;
   const summary = c.camps.length ? `<div class="k-pol-stats">
     ${stat('Held', formatPopulation(c.inmates))}

@@ -1665,10 +1665,10 @@ function focusCard(world, me) {
     return `<div class="k-focus-row">${emblemArt(focus.art, 'xs')}<button class="k-link" data-uc-focus="${state.id}">${esc(state.name)}</button><b>${esc(focus.name)}</b>
       <button class="k-x" data-uc-unfocus="${state.id}" aria-label="Remove the focus from ${esc(state.name)}"${tipAttr({ text: `Remove the focus from ${state.name}` })}>${glyph('close', 'ctl')}</button></div>`;
   }).join('');
-  const cabinet = me.focusAuto !== false && isDelegated(me, 'reforms');
+  const cabinet = me.focusAuto !== false && isDelegated(me, 'development');
   return panel('State focus', `${rows || empty('No state has a focus.')}
     <div class="k-focus-foot"><span>${free ? `${free} free slot${free === 1 ? '' : 's'}` : 'all slots in use'}</span>
-      <button class="k-btn sm${cabinet ? ' on' : ''}" data-uc-focus-auto${isDelegated(me, 'reforms') ? '' : ' disabled'}${tipAttr({ text: 'The cabinet (AUTO) puts a focus in every empty slot each quarter.\nTurn it off to keep the slots you clear empty.' })}>Cabinet fills: ${cabinet ? 'on' : 'off'}</button>
+      <button class="k-btn sm${cabinet ? ' on' : ''}" data-uc-focus-auto${isDelegated(me, 'development') ? '' : ' disabled'}${tipAttr({ text: 'The cabinet (AUTO) puts a focus in every empty slot each quarter.\nTurn it off to keep the slots you clear empty.' })}>Cabinet fills: ${cabinet ? 'on' : 'off'}</button>
       <button class="k-btn sm" data-uc-unfocus-all${states.length ? '' : ' disabled'}>Clear all</button></div>`,
   { sub: `${states.length} of ${focusSlots(me)} slots` });
 }
