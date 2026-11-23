@@ -10,8 +10,10 @@ import { makeRng } from '../core/rng.js';
 import { makeNoise2D, fbm } from '../core/noise.js';
 import { classify, SEA_LEVEL, TERRAIN } from './terrain.js';
 import { DIRS, SQRT3, hexDistance, hexToPixel, offsetToAxial, wrapCol } from '../core/hex.js';
-import { generateCultures, mixCultures } from './cultures.js';
+import { CULTURE_GEN_LATEST, generateCultures, mixCultures } from './cultures.js';
+import { mosaicBeforeNations } from './mosaic.js';
 import { generateProvinces, PROVINCE_GEN_LATEST } from './provinces-gen.js';
+import { NATION_GEN_LATEST } from './nations.js';
 import { applyRivers, generateRivers } from './rivers.js';
 import { buildGeography, zoneAnchors } from './geography.js';
 import { EARTH_COLS, EARTH_ROWS, earthData } from './earth.js';
@@ -53,6 +55,13 @@ export const DEFAULT_OPTIONS = {
    * v1 ile yeniden kurulur.
    */
   provinceGen: PROVINCE_GEN_LATEST,
+  /** Ülke toprağı üreteci sürümü (bkz. nations.js NATION_GEN_LATEST); aynı kayıt deseni. */
+  nationGen: NATION_GEN_LATEST,
+  /**
+   * Kültür üreteci sürümü (bkz. cultures.CULTURE_GEN_LATEST). provinceGen
+   * deseni: alanı olmayan eski kayıt 1 ile, yani eski halk haritasıyla kurulur.
+   */
+  cultureGen: CULTURE_GEN_LATEST,
 };
 
 export class World {
@@ -229,13 +238,16 @@ export function generateWorld(seed, options = {}) {
   if (earth) applyRivers(world, geo.rivers, geo.build?.riverSystems ?? 0);
   else generateRivers(world);
   labelContinents(world);
-  generateCultures(world, rng);
+  generateCultures(world, rng, { gen: opt.cultureGen });
   // Province bölümlemesi kültürden sonra: küme, üye çoğunluğunun kültürüne
   // "snap" eder. Kendi rng dalını kullanır, ana akışı kaydırmaz.
   generateProvinces(world, opt.provinceGen);
   // Karışım kümeler kurulduktan SONRA: sızma komşuluk üzerinden işler ve
   // kırılmış kültürler küme küme azınlığa düşer (bkz. cultures.mixCultures).
-  mixCultures(world);
+  mixCultures(world, { gen: opt.cultureGen });
+  // Etnik mozaik (cultureGen ≥ 2): yama kuşağı, diaspora, ada azınlığı. Kendi
+  // zar dalıyla; ana yurtlar ve sayaçlar orada yeniden yazılır.
+  if (opt.cultureGen >= 2) mosaicBeforeNations(world);
   // Kayıt yalnız üretilenden sapan kareleri yazar; taban kültür karşılaştırma için.
   world.forEach((t) => { t.baseCulture = t.culture; });
   // Arketip ülke yerleşimi bölge çapalarını arar (bkz. nations.js). Çapa

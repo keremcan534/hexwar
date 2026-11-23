@@ -10,7 +10,7 @@
 // (yeniden hesap) ve hedefe varmak.
 
 import { findPath } from '../core/pathfind.js';
-import { nodeNeighbors, nodeOf, nodesAdjacent } from '../world/provinceGraph.js';
+import { landmassOf, nodeNeighbors, nodeOf, nodesAdjacent } from '../world/provinceGraph.js';
 import { atWar, inCrisis } from './diplomacy.js';
 import { controllerOf } from './control.js';
 import { startBattle } from './battles.js';
@@ -303,22 +303,130 @@ export function destinationOf(unit) {
 }
 
 /**
- * Hedefe giden yolu kurar. Yolun ilk elemani ordunun *bir sonraki* karesidir;
- * bulundugu kare yola dahil edilmez.
+ * OTOMATİK EMRİN DENİZ KURALI (Kerem: "saçma sapan bazen dünyanın öbür
+ * ucundan çıkartma atmaya başlıyorlar"). YZ'nin, generallerin (oyuncunun AUTO
+ * cephesi dahil) ve çıkarma harekâtının yolu iki kapıdan geçer; oyuncunun
+ * kendi verdiği emir geçmez (uzak çıkarmayı oyuncu isterse yapar).
+ *
+ *   1. KARA YOLU VARSA KARA YOLU. Yol bulucu deniz hexini kara hexiyle aynı
+ *      fiyata sayar: kıyı boyunca bir körfezi atlamak (biniş 4 + 1 hex + iniş
+ *      4) dokuz puanlık kara dolambacını yeniyordu. Hedef aynı kara
+ *      kütlesindeyse önce yalnız karadan yol aranır; deniz yolunun
+ *      `landDetour` katına kadar uzunsa o seçilir.
+ *   2. ÇIKARMA YAKINDAN YAPILIR. Düşman kıyısına (toprak ya da kontrol
+ *      düşmanın; kıyı başına giden ikinci dalga da) inen yol denizde en çok
+ *      `landingHexes` hex ve `landingZones` deniz bölgesi geçer, iniş yeri
+ *      kendi toprağımıza en çok `homeReach` hex uzaklıktadır. Aşan yol
+ *      kurulmaz: tümen kendi kıyısında kalır, general başka mevki seçer.
+ *   3. (command.assignPosts) Öbür kara kütlesindeki cephe mevkisi ancak
+ *      `redeployReach` hex içindeyse ya da anavatana dönüşse seçilir.
  */
-export function orderMove(game, unit, target) {
+export const AUTO_SEA = {
+  landingHexes: 16,
+  landingZones: 2,
+  homeReach: 12,
+  landDetour: 2.5,
+  redeployReach: 30,
+};
+
+/** Bu yolu otomatik bir el mi kuruyor? Oyuncunun kendi emri (directive) değil. */
+export function autoOrder(game, unit) {
+  if (unit.nationId !== game.turns?.playerNation) return true;
+  return !unit.directive || unit.directive.landing != null;
+}
+
+/** Yolun deniz bacakları: hex, bölge sayısı ve iniş kareleri. */
+export function seaLegsOf(start, path) {
+  let hexes = 0;
+  const zones = new Set();
+  const landings = [];
+  let prev = start;
+  for (const step of path) {
+    if (step.terrain.water) {
+      hexes++;
+      if (step.seaZone >= 0) zones.add(step.seaZone);
+    } else if (prev?.terrain.water) {
+      landings.push(step);
+    }
+    prev = step;
+  }
+  return { hexes, zones: zones.size, landings };
+}
+
+/** `tile` çevresinde `reach` adımda (kara ve deniz) `nationId`nin sahip olduğu kara var mı? */
+export function nearOwnSoil(world, tile, nationId, reach) {
+  if (tile.owner === nationId) return true;
+  const seen = new Set([tile]);
+  let frontier = [tile];
+  for (let depth = 0; depth < reach && frontier.length; depth++) {
+    const next = [];
+    for (const node of frontier) {
+      for (const near of nodeNeighbors(world, node)) {
+        if (seen.has(near)) continue;
+        seen.add(near);
+        if (!near.terrain.water && near.owner === nationId) return true;
+        next.push(near);
+      }
+    }
+    frontier = next;
+  }
+  return false;
+}
+
+/** Otomatik yolun düşman kıyısına uzak çıkarma içerip içermediği. */
+export function farLanding(world, unit, start, path) {
+  const legs = seaLegsOf(start, path);
+  if (!legs.hexes) return false;
+  const enemy = (id) => id >= 0 && id !== unit.nationId && atWar(world, id, unit.nationId);
+  const hostile = legs.landings.filter((tile) => enemy(controllerOf(tile)) || enemy(tile.owner));
+  if (!hostile.length) return false;
+  if (legs.hexes > AUTO_SEA.landingHexes || legs.zones > AUTO_SEA.landingZones) return true;
+  return hostile.some((tile) => !nearOwnSoil(world, tile, unit.nationId, AUTO_SEA.homeReach));
+}
+
+function pathCost(costOf, start, path) {
+  let cost = 0;
+  let from = start;
+  for (const step of path) {
+    cost += costOf(step, from);
+    from = step;
+  }
+  return cost;
+}
+
+/**
+ * Hedefe giden yolu kurar. Yolun ilk elemani ordunun *bir sonraki* karesidir;
+ * bulundugu kare yola dahil edilmez. `auto` verilmezse emri kimin verdiği
+ * tümenin kendisinden okunur (autoOrder); oyuncunun tıklaması `auto: false`.
+ */
+export function orderMove(game, unit, target, { auto = null } = {}) {
   const world = game.world;
   // Hedef karesi province'in merkez dugumune cekilir: hangi kareye
   // tiklanmis olursa olsun ordu o province'e yurur.
   target = nodeOf(world, target);
   // attackReadyAt yeni saldiriyi kilitler, dost toprakta yeniden konuslanmayi degil.
   if (!unit || !target || unit.battleId || unit.tile === target) return false;
-  const path = findPath(world, unit.tile, target, {
-    canEnter: game.canEnterFor(unit),
-    costOf: game.costForUnit(unit),
-    neighbors: (tile) => nodeNeighbors(world, tile),
-  });
+  const canEnter = game.canEnterFor(unit);
+  const costOf = game.costForUnit(unit);
+  const neighbors = (tile) => nodeNeighbors(world, tile);
+  let path = findPath(world, unit.tile, target, { canEnter, costOf, neighbors });
   if (!path?.length) return false;
+  const automatic = auto ?? autoOrder(game, unit);
+  if (automatic && unit.type?.domain === 'land' && path.some((step) => step.terrain.water)) {
+    // (1) Kara yolu varsa kara yolu: yalnız tümen karadaysa ve hedef aynı kütledeyse.
+    if (!unit.tile.terrain.water && !target.terrain.water
+      && landmassOf(world, unit.tile) === landmassOf(world, target)) {
+      const overland = findPath(world, unit.tile, target, {
+        canEnter: (tile, from) => !tile.terrain.water && canEnter(tile, from), costOf, neighbors,
+      });
+      if (overland?.length
+        && pathCost(costOf, unit.tile, overland) <= AUTO_SEA.landDetour * pathCost(costOf, unit.tile, path)) {
+        path = overland;
+      }
+    }
+    // (2) Uzak çıkarma kurulmaz.
+    if (farLanding(world, unit, unit.tile, path)) return false;
+  }
   resetEntrenchment(unit);
   unit.path = [...path];
   unit.progress = 0;

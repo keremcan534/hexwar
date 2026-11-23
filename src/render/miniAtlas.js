@@ -19,6 +19,8 @@ export const MINI_ATLAS = {
   },
   "types": {
     "infantry": {
+      "cell": 192,
+      "maskScale": 1,
       "worldSize": 30.0,
       "anchor": [
         0.5,
@@ -93,6 +95,8 @@ export const MINI_ATLAS = {
       "glow": 11.0
     },
     "cavalry": {
+      "cell": 192,
+      "maskScale": 1,
       "worldSize": 41.0,
       "anchor": [
         0.5,
@@ -167,6 +171,8 @@ export const MINI_ATLAS = {
       "glow": 12.0
     },
     "artillery": {
+      "cell": 192,
+      "maskScale": 1,
       "worldSize": 46.0,
       "anchor": [
         0.5,
@@ -241,6 +247,8 @@ export const MINI_ATLAS = {
       "glow": 30.0
     },
     "armor": {
+      "cell": 192,
+      "maskScale": 1,
       "worldSize": 54.0,
       "anchor": [
         0.5,

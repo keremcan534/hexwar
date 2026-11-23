@@ -8,8 +8,8 @@ import {
   MIN_WAR_TURNS, ULTIMATUM_WEEKS, atWar, crisisLeft, nationStrength, overlordOf, relation, truceLeft, warBlockers,
 } from '../game/diplomacy.js';
 import {
-  PEACE_TERMS, buildOffer, capitalProvinceOf, concedeKeyForTile, demandKeyForTile, demandLimit,
-  occupiedProvincesOf,
+  LAND_FLOOR, PEACE_TERMS, buildOffer, capitalProvinceOf, concedeKeyForTile, crushingVictory, protectedCapital,
+  demandKeyForTile, demandLimitFor, occupiedProvincesOf,
   offerCost, offerRefusal, provinceFromKey, provinceKeyOf, provinceWarCost, signPeace,
   termAvailable, warGoalOf, warScore,
 } from '../game/peace.js';
@@ -778,7 +778,7 @@ export class Screens {
     if (!tile || !me || this.peaceTarget == null) return;
     const take = this.peaceTab !== 'give';
     const key = take
-      ? demandKeyForTile(world, tile, this.peaceTarget)
+      ? demandKeyForTile(world, tile, this.peaceTarget, me.id)
       : concedeKeyForTile(world, tile, me.id);
     if (!key) return;
     const set = take ? this.peaceSelection.demands : this.peaceSelection.concessions;
@@ -866,6 +866,10 @@ export class Screens {
     const acceptable = refusal === null;
     const budget = Math.max(0, score);
     const cost0 = cost;
+    // Masanın iki sınırı: bütçe (fiyatlar toplamı skoru aşamaz) ve küme
+    // tavanı; ekran ikisini de peace.js'ten okur, kendisi hesap kurmaz.
+    const crushing = crushingVictory(world, me.id, target.id);
+    const limit = demandLimitFor(world, me.id, target.id, score);
     // NE URETIYOR? Masa il adi ve hex sayisi veriyordu; oyuncu sulfur kumesini
     // sigir kumesi sanip aldi (kor oyun testi: Zelfell/Norrfell). Kaynak
     // etiketi her satirda durur.
@@ -901,12 +905,14 @@ export class Screens {
     const takeable = () => {
       const held = occupiedProvincesOf(world, me.id, target.id)
         .filter((entry) => !selection.demands.has(provinceKeyOf(entry.province)));
-      // İşgal edilmiş başkent listede yoktur: oyuncu nedenini görmeli.
+      // İşgal edilmiş başkent listede yoksa oyuncu nedenini görmeli; ezici
+      // zaferde listededir ve sonucu da yazılır (peace.protectedCapital).
       const capital = capitalProvinceOf(world, target.id);
       const capitalHeld = capital && capital.tileIdx.some((idx) => controllerOf(world.tiles[idx]) === me.id);
-      const capitalNote = capitalHeld
-        ? `<p class="empty">${esc(capital.name)} is ${esc(target.name)}'s capital: a peace treaty does not erase a state. Vassalize them instead (Terms).</p>`
-        : '';
+      const capitalNote = !capitalHeld ? ''
+        : !protectedCapital(world, me.id, target.id)
+          ? `<p class="empty">Crushing victory: ${esc(capital.name)}, ${esc(target.name)}'s capital, is on the table. Take everything and the state is annexed; leave land and its capital moves there.</p>`
+          : `<p class="empty">${esc(capital.name)} is ${esc(target.name)}'s capital: a peace treaty does not erase a state. Hold it and half their land for a crushing victory, or vassalize them (Terms).</p>`;
       if (!held.length) {
         return `<p class="empty">${offer.demands.length
           ? 'Every occupied state is already on the table.'
@@ -921,7 +927,8 @@ export class Screens {
         const key = provinceKeyOf(province);
         const starred = province.tileIdx.some((idx) => world.tiles[idx].city);
         const near = mineAdjacent(province);
-        const afford = cost <= budget - cost0;
+        // Satın alınabilir: kalan bütçeye sığar VE küme tavanı dolmadı.
+        const afford = cost <= budget - cost0 && offer.demands.length < limit;
         return `<button class="peace-offer-row${near ? ' adjacent' : ''}"
           data-take-tile="${esc(key)}" title="${esc(province.name)} — ${cost} war score">
           <span class="por-name">${esc(province.name)}${starred ? ` ${glyph('star-on', 'ctl')}` : ''}</span>
@@ -988,9 +995,9 @@ export class Screens {
       <div class="card-head"><h3>${tab === 'take' ? `Demands from ${esc(target.name)}`
     : tab === 'give' ? 'States you offer' : 'Additional terms'}</h3>
         <small>${tab === 'take'
-    ? (demandLimit(score) > 0
-      ? `your war score allows ${demandLimit(score)} ${demandLimit(score) === 1 ? 'state' : 'states'} · click a row or the map`
-      : 'war score 15 lets you demand a state — terms only for now')
+    ? (limit > 0
+      ? `${Math.max(0, budget - cost)} of ${budget} war score left · up to ${limit} ${limit === 1 ? 'state' : 'states'}${crushing ? ' (crushing victory)' : ''} · click a row or the map`
+      : `war score ${LAND_FLOOR} lets you demand a state — terms only for now`)
     : tab === 'give' ? 'giving land lowers the price of the treaty'
       : 'terms that do not move borders'}</small></div>
       ${tab === 'terms' ? this.peaceTermList(world, me, target)
@@ -1008,7 +1015,7 @@ export class Screens {
       const picked = this.peaceSelection.terms.has(term.id);
       const usable = termAvailable(world, me.id, target.id, term.id);
       const why = term.id === 'VASSALIZE'
-        ? 'They are not weak enough to vassalise.'
+        ? 'They are not weak enough to vassalise: be 2.5 times stronger, or hold their capital and half their land.'
         : 'They have no foreign-culture provinces.';
       return `<button class="peace-term ${picked ? 'picked' : ''}" data-peace-term="${term.id}"
         ${usable ? '' : 'disabled'} title="${esc(usable ? term.desc : why)}">

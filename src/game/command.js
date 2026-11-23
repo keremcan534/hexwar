@@ -22,10 +22,10 @@
 import { spend } from './econ/investment.js';
 import { atWar } from './diplomacy.js';
 import { estimateBattle, selectAssault, startBattle } from './battles.js';
-import { hasDirective, orderMove } from './movement.js';
+import { AUTO_SEA, hasDirective, nearOwnSoil, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
 import { MAX_STACK, armyPower, isMilitia, isMoving, unitsOn } from './units.js';
-import { nodeNeighbors, nodesAdjacent } from '../world/provinceGraph.js';
+import { landmassOf, nodeNeighbors, nodesAdjacent } from '../world/provinceGraph.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 
 const FIRST = [
@@ -982,6 +982,10 @@ const postIndexScratch = new Map();
 const postCountScratch = [];
 const postGapScratch = [];
 const homelessScratch = [];
+const postMassScratch = [];
+const postFarScratch = [];
+/** Öbür kara kütlesindeki mevkinin cezası: zayıflık × 10'un tavanından büyük. */
+const OVERSEAS_POST = SPREAD * 10 + 1;
 
 function assignPosts(world, divisions, front) {
   if (!front.length) {
@@ -1014,22 +1018,57 @@ function assignPosts(world, divisions, front) {
     }
   };
 
+  // DENİZ AŞIRI MEVKİ SONDA (Kerem: "dünyanın öbür ucundan çıkartma"). Boş
+  // mevki "zayıflık × 10" ile seçiliyordu: okyanusun öbür yakasındaki boş
+  // cephe parçası (sömürge sınırı, kıyı başı) her zaman en zayıf yer çıkıyor,
+  // anavatandaki tümen oraya gemiyle gidiyordu. Ölçüldü (160×96, 3 tohum ×
+  // 20 yıl): YZ komutasının düşman kıyısına 1.093 inişi, denizde p90 89 hex,
+  // en uzun 290 hex / 17 deniz bölgesi; uzun yolculuğun çoğu sömürgedeki
+  // kendi mevkisine gidip yanındaki düşman kıyısına inen dalgaydı. Artık
+  // tümenin kara kütlesindeki mevkiler önce dolar; öbür kütledeki mevki ancak
+  // `AUTO_SEA.redeployReach` hex içindeyse (ya da anavatana dönüşse) seçilir,
+  // düşman toprağındaki uzak kıyı başı hiç seçilmez (movement.farLanding).
+  const nationId = divisions[0]?.nationId;
+  const capital = world.nations[nationId]?.capital;
+  const homeland = capital ? landmassOf(world, capital) : -1;
+  const mass = postMassScratch;
+  const far = postFarScratch;
+  mass.length = front.length;
+  far.length = front.length;
+  for (let i = 0; i < front.length; i++) { mass[i] = landmassOf(world, front[i]); far[i] = null; }
+  const farPost = (i) => {
+    if (far[i] == null) {
+      const tile = front[i];
+      far[i] = tile.owner !== nationId && !nearOwnSoil(world, tile, nationId, AUTO_SEA.homeReach);
+    }
+    return far[i];
+  };
+  /** Öbür kütledeki mevki bu tümene kapalı mı: uzak kıyı başı ya da okyanus ötesi. */
+  const unreachable = (unit, i) => mass[i] !== landmassOf(world, unit.tile) && (farPost(i)
+    || (mass[i] !== homeland
+      && world.wrapDistance(unit.tile.q, unit.tile.r, front[i].q, front[i].r) > AUTO_SEA.redeployReach));
+
   const homeless = homelessScratch;
   homeless.length = 0;
   for (const unit of divisions) {
     const post = postTileOf(world, unit);
     const at = post ? index.get(post) : undefined;
-    if (at === undefined || count[at] >= capacity) homeless.push(unit);
+    // Ulaşılamayan eski mevki bırakılır: tümen her hafta yolu kurup otomatik
+    // emrin deniz kuralına takılır ya da okyanusu aşmaya devam ederdi.
+    if (at === undefined || count[at] >= capacity || unreachable(unit, at)) homeless.push(unit);
     else claim(at);
   }
 
   for (const unit of homeless) {
     let best = -1;
     let bestScore = -Infinity;
+    const home = landmassOf(world, unit.tile);
     for (let i = 0; i < front.length; i++) {
       if (count[i] >= capacity) continue;
-      // Zayiflik birincil, orduya yakinlik ikincil.
-      const score = gap[i] * 10
+      const overseas = mass[i] !== home;
+      if (overseas && unreachable(unit, i)) continue;
+      // Kendi kütlesi birincil, zayiflik ikincil, orduya yakinlik ucuncul.
+      const score = gap[i] * 10 - (overseas ? OVERSEAS_POST : 0)
         - world.wrapDistance(unit.tile.q, unit.tile.r, front[i].q, front[i].r);
       if (score > bestScore) {
         bestScore = score;
@@ -1062,10 +1101,13 @@ function assignPosts(world, divisions, front) {
 function reservePostFor(world, unit, front) {
   let best = null;
   let bestDistance = Infinity;
+  // Yedek de önce kendi kara kütlesinde aranır (bkz. assignPosts, OVERSEAS_POST).
+  const home = landmassOf(world, unit.tile);
   for (const tile of front) {
     for (const near of nodeNeighbors(world, tile)) {
       if (!near.terrain.passable || controllerOf(near) !== unit.nationId) continue;
-      const distance = world.wrapDistance(unit.tile.q, unit.tile.r, near.q, near.r);
+      const distance = world.wrapDistance(unit.tile.q, unit.tile.r, near.q, near.r)
+        + (landmassOf(world, near) !== home ? OVERSEAS_POST : 0);
       if (distance < bestDistance) {
         bestDistance = distance;
         best = near;

@@ -6,8 +6,10 @@ düğmesi, yeşil) dokunulmaz: yalnız pirinç bandı (ton 45-118, doygunluk 0.1
 Aynı dönüşüm src/ui/theme.js accentColor'dadır; ikisi birlikte değişmeli.
 
     python scripts/art/accent-skin.py
+    python scripts/art/accent-skin.py --taraf    # yalnız harita sayacının taraf emayeleri
 """
 import os
+import sys
 import numpy as np
 from PIL import Image
 
@@ -109,8 +111,44 @@ def categories():
     print('kat', len(CATEGORIES), 'tamam')
 
 
+# HARİTA SAYACININ TARAF EMAYESİ (src/render/renderer.js COUNTER_SKIN): birlik künyesi arayüzle
+# aynı malzemedir. Pirinç çerçeve kalır, yalnız koyu deri zemin tarafın emayesine döner; zeminin
+# çizik ve parlaması L'de olduğu için korunur. Eskiden taraf, pirinç simgenin 'color' karışımıyla
+# düz yeşil/kırmızı çizgiye boyanıyordu. Haritaya yazılır, vurgu rengiyle dönmez.
+# ad: (ton, doygunluk, açıklık çarpanı). Koyu emaye: açık ve doygun zemin karlı haritada
+# oyuncak gibi parlıyordu, pirinç simge de üstünde kayboluyordu. Düşman biraz daha açık:
+# kırmızı-yeşil renk körlüğünde ikisi açıklıktan da ayrılsın (biçim işareti ayrıca kesik köşe).
+SIDES = {'own': (148.0, 0.068, 0.98), 'ally': (250.0, 0.072, 1.02), 'hostile': (27.0, 0.11, 1.07)}
+SIDE_RIM = 9.5
+
+
+def sides():
+    out = os.path.join(SKIN, 'taraf')
+    os.makedirs(out, exist_ok=True)
+    arr = np.asarray(Image.open(os.path.join(SKIN, 'dugme.webp')).convert('RGBA')).astype(np.float64) / 255
+    h, w = arr.shape[:2]
+    y = np.arange(h)[:, None]
+    x = np.arange(w)[None, :]
+    edge = np.minimum(np.minimum(y, h - 1 - y), np.minimum(x, w - 1 - x)).astype(np.float64)
+    field = np.clip((edge - SIDE_RIM) / 1.5, 0, 1)[..., None]
+    L, _, _ = rgb_to_oklch(arr[..., :3])
+    for name, (hue, chroma, lmul) in SIDES.items():
+        L2 = L * lmul
+        # Doygunluk açıklıkla birlikte salınır: çiziğin parlak yeri renkli kalsın, gri lekeye dönmesin.
+        C2 = chroma * np.clip(L2 / max(L2[field[..., 0] > 0.5].mean(), 1e-3), 0.6, 1.4)
+        rgb = oklch_to_rgb(L2, C2, np.full_like(L2, hue))
+        res = np.concatenate([arr[..., :3] * (1 - field) + rgb * field, arr[..., 3:4]], axis=-1)
+        Image.fromarray((np.clip(res, 0, 1) * 255 + 0.5).astype(np.uint8), 'RGBA').save(
+            os.path.join(out, f'{name}.webp'), 'WEBP', quality=95, method=6)
+    print('taraf', len(SIDES), 'tamam')
+
+
 def main():
+    if '--taraf' in sys.argv:
+        sides()
+        return
     categories()
+    sides()
     for accent in ACCENTS:
         for src_dir, suffix in [(SKIN, ''), (os.path.join(SKIN, 'acik'), '-acik')]:
             dst = os.path.join(SKIN, accent + suffix)

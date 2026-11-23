@@ -3,13 +3,11 @@
 import { makeRng } from '../core/rng.js';
 import { settle } from './treasury.js';
 import {
-  UNIT_TYPES, advanceEntrenchment, applyArmyLosses, createUnit, placeUnit, refreshArmy,
+  UNIT_TYPES, advanceEntrenchment, applyArmyLosses, createUnit, refreshArmy,
   regimentCount, removeUnit, resetUnitIds, stackFull,
 } from './units.js';
-import {
-  advanceMovement, clearDirective, orderMove, resumeDirectives,
-} from './movement.js';
-import { disband, nationManpower, queueRecruit, recruit, releaseQueued, runTraining } from './recruitment.js';
+import { advanceMovement, resumeDirectives } from './movement.js';
+import { nationManpower, queueRecruit, recruit, releaseQueued, runTraining } from './recruitment.js';
 import { START_ARMY, START_FLEET } from './era.js';
 import { ARMY_POOL_SHARE, POP_UNIT } from './econ/defs.js';
 import { runReinforcements } from './reinforcement.js';
@@ -60,9 +58,10 @@ import { runNationalEvents, runWorldStories } from './events.js';
 import { expireTreaties, updateWarBalance } from './peace.js';
 import { isAllied } from './alliances.js';
 import { beginReplay, recordReplay } from './replay.js';
+import { armiesHomeAfterPeace, sendHome, withdrawTrespassers } from './withdrawal.js';
 
 const isAlliedTo = (world, a, b) => b >= 0 && isAllied(world.nations[a], b);
-import { isNode, nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
+import { nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 
 /** İkmal: kendi kontrolüne bu kadar hex mesafede yıpranma yok (bkz. supplyAttrition). */
 const SUPPLY_FREE_HEXES = 7;
@@ -893,59 +892,52 @@ export class TurnManager {
   }
 
   /**
-   * Barista yabanci toprakta tumen duramaz.
-   *
-   * makePeace toprak devrini ve ateskesi yapiyordu ama BIRLIKLERI hic
-   * kimildatmiyordu: savas bitince ordu dusmanin ortasinda kaliyor, oradan
-   * ne yurumesine izin var (canEnterFor barista yabanci topraga girisi
-   * dogru sekilde reddediyor) ne de geri cagriliyordu. Sonuc, oyuncunun
-   * "savas sonrasi dusmanin icinde kalabiliyoruz" dedigi kilitlenmeydi.
-   *
-   * Olay degil DEGISMEZ olarak yazildi: her hafta bakilir. Boylece ucuncu
-   * bir tarafin altimizdaki topragi almasi ya da ateskesin baska yoldan
-   * baslamasi da ayni kapidan gecer.
-   *
-   * Once yuruyus denenir (yol varsa ordu geri cekiliyor gorunur); yol yoksa
-   * en yakin kendi karesine dogrudan konur. Vic2 da boyle yapar: baris
-   * anlasmasi orduyu ait oldugu yere koyar.
+   * Barista yabanci toprakta tumen duramaz (withdrawal.js). Haftalik
+   * DEGISMEZ olarak kalir: ucuncu bir tarafin altimizdaki topragi almasi,
+   * gecisin bitmesi ayni kapidan gecer. Barisin kendisi tumenleri IMZA
+   * ANINDA eve koyar (armiesHomeAfterPeace); eskiden bu tarama tek cikisti
+   * ve once yuruyus denedigi icin yola cikan tumen hafta sonunda hala
+   * yabanci topraktaydi (olculdu: 2 yilda 8 tumen-hafta, 160x96).
    */
   withdrawTrespassers() {
-    const world = this.world;
-    // Kopya üzerinde: disband birimi diziden yerinde siliyor, canlı dizide
-    // bir sonraki birim o hafta atlanıyordu.
-    for (const unit of [...world.units]) {
-      if (unit.type.domain !== 'land' || unit.embarked || unit.battleId) continue;
-      const tile = unit.tile;
-      if (!tile) continue;
-      const holder = controllerOf(tile);
-      if (holder < 0 || holder === unit.nationId) continue;
-      if (atWar(world, holder, unit.nationId)) continue;
-      // Geçiş izni olan tümen kalır: kurtarıcı ve aynı cephedeki dost geçişi
-      // yalnız tek haftalık yürüyüşte işliyordu, hafta sonunda eve dönüyordu.
-      if (DIP_AI.passage && hasPassage(world, holder, unit.nationId)) continue;
+    return this.reportWithdrawal(withdrawTrespassers(this.game));
+  }
 
-      let best = null;
-      let bestDistance = Infinity;
-      let home = 0;
-      world.forEach((candidate) => {
-        if (candidate.terrain.water || !candidate.terrain.passable) return;
-        if (controllerOf(candidate) !== unit.nationId) return;
-        home++;
-        if (!isNode(world, candidate) || stackFull(candidate)) return;
-        const distance = world.wrapDistance(tile.q, tile.r, candidate.q, candidate.r);
-        if (distance < bestDistance) { bestDistance = distance; best = candidate; }
-      });
-      // Topragi HIC kalmamis devletin ordusu yabanci toprakta duramaz ve
-      // donecek yeri de yoktur: dagilir. Olculdu, kalan vakalarin cogu buydu
-      // (2/3). disband insan gucunu de birakir, yani adamlar kaybolmaz.
-      if (!home) { disband(this.game, unit); continue; }
-      if (!best) continue;
+  /** diplomacy.makePeace çağırır: muharebe dağılır, ordular aynı anda eve. */
+  armiesHomeAfterPeace() {
+    return this.reportWithdrawal(armiesHomeAfterPeace(this.game));
+  }
 
-      unit.post = null;
-      clearDirective(unit);
-      if (!orderMove(this.game, unit, best)) placeUnit(unit, best);
-      this.game.renderer.invalidateTiles([tile, best], false);
-    }
+  /** Geçişi biten tümen (nationBirth.runPassages) aynı kuralla eve konur. */
+  sendUnitHome(unit) {
+    const result = sendHome(this.game, unit);
+    this.game.requestRender?.();
+    return result;
+  }
+
+  /**
+   * Oyuncunun tümeni eve konduysa tek satır: tümenin haritada "ışınlandığını"
+   * görüp nedenini bilmemesi, eski kilitlenmenin sessiz bir karşılığı olurdu.
+   */
+  reportWithdrawal(moved) {
+    if (!moved.length) return moved;
+    this.game.requestRender?.();
+    const mine = moved.filter((entry) => entry.unit.nationId === this.playerNation);
+    if (!mine.length) return moved;
+    const placed = mine.filter((entry) => entry.result === 'placed').length;
+    const sailing = mine.filter((entry) => entry.result === 'sailing').length;
+    const disbanded = mine.filter((entry) => entry.result === 'disbanded').length;
+    const from = [...new Set(mine.map((entry) => this.world.nations[entry.holder]?.name).filter(Boolean))];
+    const where = from.length ? ` from ${from.join(', ')}` : '';
+    const parts = [];
+    if (placed) parts.push(`${placed} division${placed === 1 ? '' : 's'} returned home${where}`);
+    if (sailing) parts.push(`${sailing} at sea turned for home`);
+    if (disbanded) parts.push(`${disbanded} disbanded with no home soil left`);
+    this.addLog(`${parts.join('; ')}: peace closes foreign borders.`, {
+      kind: 'ARMY', tier: 1, key: `withdraw:${this.turn}`, tile: mine[0].unit.tile,
+    });
+    this.game.emit?.('units', this.game.selectedUnit);
+    return moved;
   }
 
   /**

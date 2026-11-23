@@ -28,6 +28,7 @@
 //              gfxHighland gfxCoastDist gfxHeightGrad(world, s) gfxHeightGradMS(world, px)
 //              gfxHeightNormal(world, px, exag) gfxNormalFromGrad(g, exag) gfxSlope(N)
 //              gfxErosionGrad(world, g, kapı, amp) gfxGully(...)
+//              gfxOcclusion(world, h, px) gfxCoastGrad(world, s)
 //   ışık       gfxHillshade(N, L, k, lo, hi)  — düzde 1.0, ortalama korunur
 //   biyom      gfxBiomeAt(world) → GfxBiome gfxBiomeLod gfxBiomeWeights(world, a, b, c) gfxClimate(world)
 //   hex verisi gfxHexData(cell) gfxDev(cell) → GfxDev
@@ -266,6 +267,53 @@ float gfxHillshade(vec3 N, vec3 L, float k, float lo, float hi) {
   float up = max(hi - 1.0, 1e-3);
   float dn = max(1.0 - lo, 1e-3);
   return 1.0 + (s > 0.0 ? up * tanh(s / up) : dn * tanh(s / dn));
+}
+
+/**
+ * ORTAM KAPANMASI YAKLAŞIĞI: pikselin yüksekliği çevresinin süzülmüş
+ * ortalamasından ne kadar aşağıda (yükseklik birimi). Vadi tabanı, oluk içi,
+ * dağ eteği +; sırt, tepe ve denize bakan kıyı − (deniz pişmiş alanda hafif
+ * eksidir: kıyıdaki kara çevresinden yüksek okunur, kıta denizden kalkar).
+ * İki halka: ~yarım hex (oluk, dar vadi) ve ~1.5 hex (havza, etek). Her halka
+ * dört dokunuştur ve ikincisi 45° döndürülmüş: tek kaba mip okuması mip
+ * ızgarasının kırışığını ışığa düz çizgi olarak taşır. Süzgeç ortalamayı
+ * korur: alanın ortalaması ~0, harita bütünde kararmaz. Ovada yükseklik farkı
+ * yok denecek kadar azdır, orada uydurma leke üretmez.
+ *   h: pikselin yüksekliği (gfxTerrain().r), px: gfxPx().
+ */
+float gfxOcclusion(vec2 world, float h, float px) {
+  vec2 uv = gfxUV(world);
+  float hexW = uHexSize * 1.7320508;
+  float r1 = max(hexW * 0.42, px * 2.0);
+  float r2 = max(hexW * 1.5, px * 5.0);
+  float l1 = gfxLod(r1 * 0.7, uTerrTexel.x);
+  float l2 = gfxLod(r2 * 0.7, uTerrTexel.x);
+  vec2 s = 1.0 / uFieldSpan;
+  vec2 a = vec2(r1, 0.0) * s;
+  vec2 b = vec2(0.0, r1) * s;
+  float m1 = textureLod(uTerrH, uv + a, l1).r + textureLod(uTerrH, uv - a, l1).r
+           + textureLod(uTerrH, uv + b, l1).r + textureLod(uTerrH, uv - b, l1).r;
+  vec2 c = vec2(r2, r2) * 0.7071 * s;
+  vec2 d = vec2(r2, -r2) * 0.7071 * s;
+  float m2 = textureLod(uTerrH, uv + c, l2).r + textureLod(uTerrH, uv - c, l2).r
+           + textureLod(uTerrH, uv + d, l2).r + textureLod(uTerrH, uv - d, l2).r;
+  return (m1 * 0.25 - h) * 0.6 + (m2 * 0.25 - h) * 0.4;
+}
+
+/**
+ * Kıyı uzaklığının eğimi (hex eni / dünya birimi): içeri, karaya doğru.
+ * Kıyı kenarının hangi yöne baktığını verir (yalı yarının ışığı).
+ */
+vec2 gfxCoastGrad(vec2 world, float s) {
+  vec2 uv = gfxUV(world);
+  float lod = gfxLod(s, uTerrTexel.x);
+  vec2 ox = vec2(s / uFieldSpan.x, 0.0);
+  vec2 oy = vec2(0.0, s / uFieldSpan.y);
+  float l = textureLod(uTerrH, uv - ox, lod).a;
+  float r = textureLod(uTerrH, uv + ox, lod).a;
+  float u = textureLod(uTerrH, uv - oy, lod).a;
+  float d = textureLod(uTerrH, uv + oy, lod).a;
+  return vec2(r - l, d - u) / (2.0 * s);
 }
 
 // ---- biyom ve iklim ----

@@ -56,19 +56,46 @@ vec3 seasonLand(vec3 col, vec2 world, vec3 Ldir) {
   // Kar çizgisini iklim çizer, gürültü yalnız kenarını kırar: geniş ölçekli
   // gürültü kıtanın üstünde bulut lekesi gibi duruyordu. Geçiş dar tutulur,
   // yarım kar geniş alanda sis gibi okunur.
-  float n4 = texture(uWave, q * 521.0 + 0.13).a - 0.5;
+  //
+  // İnce gürültü ekranda söner (2026-11-23): dalga dokusunun mip'i yok ve
+  // q·149 / q·521 döşemelerinin deseni bir pikselden ince; eşiklenince kar
+  // kenarı kıtaya serpilmiş piksel beneği ve kamuflaj lekesi gibi okunuyordu.
+  // Kenarı artık arazi kırar (aşağıda): sırt soğuk, vadi ılık, güneşe dönük
+  // yamaç erken erir; gürültü yalnız ekranda seçilebildiği ölçekte kalır.
+  float pxw = 1.0 / (uZoom * uDpr);
+  float f2 = smoothstep(3.0, 10.0, uFieldSpan.x / 37.0 * 0.25 / pxw);
+  float f3 = smoothstep(4.0, 14.0, uFieldSpan.x / 149.0 * 0.25 / pxw);
   // Gecikme (climate.js SNOW_LAG): ilkbaharda kar geç erir, sonbaharda geç tutar.
-  float edge = tC + amp * uSeasonCool * 0.28 + n1 * 1.0 + n2 * 1.8 + n3 * 2.2 + n4 * 1.4;
-  float snow = 1.0 - smoothstep(-1.0, -0.1, edge);
+  float edge = tC + amp * uSeasonCool * 0.28 + n1 * 1.2 + n2 * 1.8 * f2 + n3 * 1.4 * f3;
+#ifdef GFX
+  vec4 Tt = gfxTerrain(world);
+  vec2 gg = gfxHeightGradMS(world, gfxPx());
+  edge += -(Tt.r - Tt.g) * 24.0 + clamp(dot(-gg * uHeightScale, Ldir.xy) / Ldir.z, -1.5, 1.5) * 0.9;
+#endif
+  float snow = 1.0 - smoothstep(-1.3, 0.1, edge);
   if (snow <= 0.0) return col;
+#ifdef GFX
+  // Görsel stilde karın ışığı arazi normalinden (çok ölçekli, ortalamayı
+  // koruyan) ve ortam kapanmasından: eski R8 rasterin tuğla eğimi karın
+  // üstünde gri bulut lekeleri bırakıyordu.
+  vec3 N = normalize(vec3(-gg * uHeightScale, 1.0));
+  float lit = gfxHillshade(N, Ldir, 1.35, 0.62, 1.12)
+    * clamp(1.0 - gfxOcclusion(world, Tt.r, gfxPx()) * 2.0, 0.72, 1.06);
+#else
   float h;
   vec2 g = elevGrad(uv, h);
   vec3 N = normalize(vec3(g * 18.0 * uLandRelief, 1.0));
   // Karın kabartması: düz zeminde 1, güneye dönük yamaç parlar, kuzey gölgede.
   float lit = clamp(dot(N, Ldir) / Ldir.z, 0.62, 1.22);
-  vec3 white = vec3(0.86, 0.90, 0.94) * lit;
+#endif
+  // Karın gölgesi soğuk (gökyüzü aydınlatır): düz gri gölge karı plastik gösterir.
+  vec3 white = vec3(0.86, 0.90, 0.94) * lit
+    * mix(vec3(1.0), vec3(0.93, 0.97, 1.05), clamp((1.0 - lit) * 2.5, 0.0, 1.0));
   // Ülke rengi karın altından hafifçe duyulur: kışın da harita siyasi kalır.
   vec3 hue = clamp(col / max(luma, 0.05), 0.72, 1.28);
-  return mix(col, white * mix(vec3(1.0), hue, 0.24), snow * uSeasonCap);
+  // Karlı orman yukarıdan griye çalar (taç karı tutmaz): kar örtüsünün dokusu
+  // gürültüden değil ormanın kendi verisinden gelir.
+  float cover = snow * uSeasonCap * (1.0 - 0.35 * forest);
+  return mix(col, white * mix(vec3(1.0), hue, 0.24), cover);
 }
 `;

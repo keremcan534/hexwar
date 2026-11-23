@@ -213,7 +213,7 @@ const RIDGE_CROSS = 4;
  * Kenar başına sırt gücü (kare indeksi*6 + yön): kenarın iki yanı, kenarın
  * uçlarındaki iki kareden ne kadar yüksek. 0 = sırt değil; ~0.04 üstü tam.
  */
-function ridgeTable(world) {
+export function ridgeTable(world) {
   const n = world.cols * world.rows;
   const table = new Float32Array(n * 6);
   for (let i = 0; i < n; i++) {
@@ -232,7 +232,7 @@ function ridgeTable(world) {
 }
 
 /** İki komşu kare arasındaki kenarın tablo değeri (0 = yok). */
-function edgeValue(world, table, a, b) {
+export function edgeValue(world, table, a, b) {
   const ai = a.row * world.cols + a.col;
   for (let d = 0; d < 6; d++) {
     const v = table[ai * 6 + d];
@@ -260,7 +260,7 @@ function targetV2(tile) {
 }
 
 /** İki komşu kare arasındaki kenarda nehir akışı (0 = nehir yok). */
-function riverBetween(world, flow, a, b) {
+export function riverBetween(world, flow, a, b) {
   if (!a.riverMask || !b.riverMask) return 0;
   const ai = a.row * world.cols + a.col;
   for (let d = 0; d < 6; d++) {

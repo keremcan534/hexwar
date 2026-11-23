@@ -14,7 +14,7 @@ import { seaZonesOf } from '../world/seaZones.js';
 import { atWar } from '../game/diplomacy.js';
 import { isAllied } from '../game/alliances.js';
 import { seaLaneView } from '../game/seaLanes.js';
-import { seaZoneMarks } from '../game/navy.js';
+import { fleetMarks, seaZoneMarks } from '../game/navy.js';
 import { drawFlag } from './flagPainter.js';
 
 /** Ton dokusunun ölçeği (doku pikseli / dünya pikseli). */
@@ -66,6 +66,21 @@ const MARK_FONT = {
   name: (zoom) => `italic ${12.5 / zoom}px ${FONT_DISPLAY}`,
 };
 const CLOSED_TEXT = 'CLOSED TO OUR TROOPS';
+
+/**
+ * OYUNCUNUN FİLO SAYACI (ekran px; dünyaya /zoom). Eski rozet (14 px bayrak +
+ * sayı) bütün ulusların rozetiyle aynıydı ve tıklanmıyordu: oyuncu kendi
+ * filosunu haritada bulamıyor, ona emir veremiyordu (1536×864, NAVY1). Sayaç
+ * daha büyük, emrin rengiyle çerçeveli (Auto pirinç, deniz emri yeşil, liman
+ * gri), yakın zoomda filonun adını yazar; tıklanır (fleetAt), seçiliyken sağ
+ * tık denize emirdir (game.handleRightTap).
+ */
+const COUNTER = { h: 20, pad: 5, flagW: 15, flagH: 10, ship: 16, gap: 4, nameZoom: 0.45, gapItems: 4 };
+const COUNTER_FONT = { count: `700 12.5px ${FONT_UI}`, name: `600 12px ${FONT_UI}` };
+const MODE_COLORS = { auto: '#dcc07a', sea: '#8fd39a', port: '#9aa7b1' };
+/** Gövde silueti, 16×10 kutuda: pruva sağda, köprü ve baca. */
+let HULL_PATH = null;
+const hullPath = () => (HULL_PATH ??= new Path2D('M0 6.2h16l-2.4 3.3H2.2z M3.5 6.2V4.4h4.2V2.6h1.6v1.8h2.3v1.8z M6 2.6V0.6h1.1v2z'));
 /** Muharebe/kaçınma diskinin etiketi bu zoomdan yakında yazılır. */
 const LABEL_ZOOM = 0.5;
 const REL_ORDER = { ours: 0, ally: 1, enemy: 2, other: 3 };
@@ -631,37 +646,56 @@ export class SeaLayer {
    */
   drawFleets(ctx, world, rect, playerId, everyone = false) {
     const state = world.navyState;
-    if (!state?.presence?.size && !state?.subs?.size) return;
+    const ours = this.ourCounters(world, playerId);
+    if (!state?.presence?.size && !state?.subs?.size && !ours.size) return;
     const geo = this.geometry(world);
     const zoom = this.renderer.camera.zoom;
-    const h = MARK.badgeH / zoom;
     const U = this.renderer.upright;
     ctx.save();
     ctx.font = MARK_FONT.badge(zoom);
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    for (const [zoneId, here] of state.presence ?? []) {
+    // Satır: önce bizim filo sayaçlarımız, sonra öteki ulusların rozetleri.
+    for (const zoneId of this.rowZones(world, playerId, everyone, ours)) {
       const anchor = geo.anchors[zoneId];
       if (!anchor) continue;
-      const rows = fleetRows(world, playerId, here, (row) => everyone || row.rel !== 'other');
-      if (!rows.length) continue;
+      const row = this.zoneRow(world, playerId, zoneId, zoom, everyone, ours);
+      if (!row.counters.length && !row.badges.length) continue;
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
         if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
-        this.badges(ctx, world, anchor.x + dx, anchor.y + MARK.badgeTop / zoom, rows, { zoom, sub: false });
+        const left = anchor.x + dx - row.total / 2 / zoom;
+        const top = anchor.y + MARK.badgeTop / zoom;
+        for (const item of row.counters) {
+          this.counter(ctx, world, left + item.x / zoom, top, item, zoom, playerId);
+        }
+        if (row.badges.length) {
+          ctx.font = MARK_FONT.badge(zoom);
+          ctx.textBaseline = 'middle';
+          ctx.textAlign = 'left';
+          const cx = left + (row.badgeX + row.badgeW / 2) / zoom;
+          const y = top + (row.h - MARK.badgeH) / 2 / zoom;
+          this.badges(ctx, world, cx, y, row.badges, { zoom, sub: false });
+        }
       }
     }
     // Denizaltılar: filo satırının altında kesik kenarlı kapsül, "U" + sayı.
     // Seas kipinde herkesinki, öteki kiplerde yalnız bizim ve düşmanınki.
-    for (const [zoneId, here] of state.subs ?? []) {
+    for (const [zoneId, here] of state?.subs ?? []) {
       const anchor = geo.anchors[zoneId];
       if (!anchor) continue;
       const rows = fleetRows(world, playerId, here, (row) => everyone || row.rel === 'ours' || row.rel === 'enemy');
       if (!rows.length) continue;
+      const rowH = this.rowHeight(world, playerId, zoneId, everyone, ours);
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
         if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
-        this.badges(ctx, world, anchor.x + dx, anchor.y + MARK.badgeTop / zoom + h + MARK.rowGap / zoom, rows, { zoom, sub: true });
+        ctx.font = MARK_FONT.badge(zoom);
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        const y = anchor.y + (MARK.badgeTop + (rowH ? rowH + MARK.rowGap : 0)) / zoom;
+        this.badges(ctx, world, anchor.x + dx, y, rows, { zoom, sub: true });
       }
     }
+    this.drawFleetOrders(ctx, world, rect, playerId, ours);
     for (const mark of this.recentMarks(world, playerId, everyone)) {
       const anchor = geo.anchors[mark.zone];
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
@@ -670,6 +704,298 @@ export class SeaLayer {
         if (mark.kind === 'battle') this.battleMark(ctx, at.x, at.y, zoom, mark);
         else this.evasionMark(ctx, at.x, at.y, zoom, mark);
       }
+    }
+    ctx.restore();
+  }
+
+  /** Oyuncunun filoları, bölge başına (fleetMarks; hafta ve emir başına bir kez). */
+  ourCounters(world, playerId) {
+    const turn = world.turn ?? 0;
+    const nation = playerId >= 0 ? world.nations[playerId] : null;
+    const key = `${turn}:${playerId}:${this.fleetStamp ?? 0}`;
+    if (this.countersCache?.world === world && this.countersCache.key === key) return this.countersCache.map;
+    const map = new Map();
+    for (const mark of nation ? fleetMarks(world, nation) : []) {
+      if (!map.has(mark.zone)) map.set(mark.zone, []);
+      map.get(mark.zone).push(mark);
+    }
+    this.countersCache = { world, key, map };
+    return map;
+  }
+
+  /** Filo emri, bölünme ya da birleşme: sayaç önbelleği hafta içinde de tazelenir. */
+  touchFleets() {
+    this.fleetStamp = (this.fleetStamp ?? 0) + 1;
+  }
+
+  /** Satırı olan bölgeler: bizim sayacımız ya da (kipe göre) başkasının filosu. */
+  rowZones(world, playerId, everyone, ours) {
+    const zones = new Set(ours.keys());
+    for (const [zoneId, here] of world.navyState?.presence ?? []) {
+      if (fleetRows(world, playerId, here, (row) => row.rel !== 'ours' && (everyone || row.rel !== 'other')).length) zones.add(zoneId);
+    }
+    return [...zones].sort((a, b) => a - b);
+  }
+
+  /** Satırın yüksekliği (ekran px): sayaç varsa sayacın, yoksa rozetin; satır yoksa 0. */
+  rowHeight(world, playerId, zoneId, everyone, ours = this.ourCounters(world, playerId)) {
+    if (ours.get(zoneId)?.length) return COUNTER.h;
+    const here = world.navyState?.presence?.get(zoneId);
+    if (!here) return 0;
+    return fleetRows(world, playerId, here, (row) => row.rel !== 'ours' && (everyone || row.rel !== 'other')).length ? MARK.badgeH : 0;
+  }
+
+  /**
+   * Bölge satırının yerleşimi (ekran px, satırın sol ucundan): sayaçlar ve
+   * rozetler. Çizim, tıklama (fleetAt) ve levha engeli (markBoxes) bunu okur.
+   */
+  zoneRow(world, playerId, zoneId, zoom, everyone, ours = this.ourCounters(world, playerId)) {
+    const ctx = this.meter();
+    const turn = world.turn ?? 0;
+    const counters = [];
+    let x = 0;
+    for (const mark of ours.get(zoneId) ?? []) {
+      const name = zoom >= COUNTER.nameZoom ? mark.name : '';
+      const left = mark.eta != null ? Math.max(0, mark.eta - turn) : null;
+      const tail = mark.state === 'underway' && left != null
+        ? (left > 0 ? `${left} wk` : 'this wk') : mark.state === 'port' ? 'in port' : '';
+      ctx.font = COUNTER_FONT.count;
+      const cw = ctx.measureText(String(mark.count)).width;
+      ctx.font = COUNTER_FONT.name;
+      const nw = name ? ctx.measureText(name).width : 0;
+      const tw = tail ? ctx.measureText(tail).width : 0;
+      const w = COUNTER.pad + COUNTER.flagW + COUNTER.gap + COUNTER.ship + 3 + cw
+        + (nw ? COUNTER.gap + 2 + nw : 0) + (tw ? COUNTER.gap + 2 + tw : 0) + COUNTER.pad;
+      counters.push({ mark, name, tail, cw, nw, tw, x, w });
+      x += w + COUNTER.gapItems;
+    }
+    const here = world.navyState?.presence?.get(zoneId);
+    const badges = here ? fleetRows(world, playerId, here, (row) => row.rel !== 'ours' && (everyone || row.rel !== 'other')) : [];
+    let badgeW = 0;
+    if (badges.length) {
+      ctx.font = MARK_FONT.badge(1);
+      badgeW = badgeLayout((text) => ctx.measureText(text).width, badges, false, 1).total;
+    }
+    const total = x + badgeW - (counters.length && !badges.length ? COUNTER.gapItems : 0);
+    return { counters, badges, badgeX: x, badgeW, total, h: counters.length ? COUNTER.h : MARK.badgeH };
+  }
+
+  /** Tek filo sayacı: emrin şeridi, bayrak, gövde, sayı, (yakında) ad ve yol/liman eki. */
+  counter(ctx, world, x, y, item, zoom, playerId) {
+    const { mark } = item;
+    const z = 1 / zoom;
+    const h = COUNTER.h * z;
+    const w = item.w * z;
+    const color = MODE_COLORS[mark.mode] ?? MODE_COLORS.auto;
+    const selected = this.selectedFleet === mark.id;
+    ctx.save();
+    if (mark.state === 'port') ctx.globalAlpha *= 0.85;
+    if (selected) {
+      // Seçili: dışta pirinç ışık (tek seferlik; canlandırma yok).
+      ctx.shadowColor = 'rgba(255, 214, 120, 0.85)';
+      ctx.shadowBlur = 10;
+    }
+    ctx.fillStyle = selected ? 'rgba(34, 30, 18, 0.96)' : 'rgba(8, 14, 18, 0.92)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 3 * z);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = selected ? '#ffe39a' : color;
+    ctx.lineWidth = (selected ? 2.2 : 1.4) * z;
+    if (mark.state === 'underway') ctx.setLineDash([4 * z, 2.5 * z]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Emrin şeridi: solda dikey renk çubuğu (Auto / deniz / liman).
+    ctx.fillStyle = color;
+    ctx.fillRect(x + 1.4 * z, y + 3 * z, 2.2 * z, h - 6 * z);
+    let cx = x + COUNTER.pad * z;
+    const flag = world.nations[playerId]?.flag;
+    if (flag) {
+      ctx.save();
+      ctx.translate(cx, y + (h - COUNTER.flagH * z) / 2);
+      drawFlag(ctx, flag, 0, 0, COUNTER.flagW * z, COUNTER.flagH * z);
+      ctx.restore();
+    }
+    cx += (COUNTER.flagW + COUNTER.gap) * z;
+    ctx.save();
+    ctx.translate(cx, y + (h - 10 * z) / 2);
+    ctx.scale(z, z);
+    ctx.fillStyle = color;
+    ctx.fill(hullPath());
+    ctx.restore();
+    cx += (COUNTER.ship + 3) * z;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.font = `700 ${12.5 * z}px ${FONT_UI}`;
+    ctx.fillStyle = '#f2ead6';
+    ctx.fillText(String(mark.count), cx, y + h / 2 + 0.5 * z);
+    cx += item.cw * z;
+    ctx.font = `600 ${12 * z}px ${FONT_UI}`;
+    if (item.name) {
+      cx += (COUNTER.gap + 2) * z;
+      ctx.fillStyle = selected ? '#ffe39a' : '#d8d0bd';
+      ctx.fillText(item.name, cx, y + h / 2 + 0.5 * z);
+      cx += item.nw * z;
+    }
+    if (item.tail) {
+      cx += (COUNTER.gap + 2) * z;
+      ctx.fillStyle = mark.state === 'port' ? '#aab4bd' : ROUTE_COLOR;
+      ctx.fillText(item.tail, cx, y + h / 2 + 0.5 * z);
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Ekran noktasındaki oyuncu filosu (game.handleTap): sayacın kutusu
+   * zoneRow'dan, bölge çapası kameradan. Kimlik döner (0 = sanal Home Fleet).
+   */
+  fleetAt(world, playerId, sx, sy) {
+    if (!world || playerId < 0) return null;
+    const camera = this.renderer.camera;
+    if (!camera?.worldToScreenNear) return null;
+    const ours = this.ourCounters(world, playerId);
+    if (!ours.size) return null;
+    const geo = this.geometry(world);
+    const everyone = this.renderer.mapMode === 'seas';
+    for (const [zoneId] of ours) {
+      const anchor = geo.anchors[zoneId];
+      if (!anchor) continue;
+      const p = camera.worldToScreenNear(anchor.x, anchor.y, sx);
+      const row = this.zoneRow(world, playerId, zoneId, camera.zoom, everyone, ours);
+      const left = p.x - row.total / 2;
+      const top = p.y + MARK.badgeTop;
+      if (sy < top - 3 || sy > top + row.h + 3) continue;
+      for (const item of row.counters) {
+        if (sx >= left + item.x - 2 && sx <= left + item.x + item.w + 2) return item.mark.id;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Filoların emirleri haritada: deniz emri olan filonun bulunduğu yerden
+   * hedefine yeşil kesik yol ve hedefte halka (emir verildi, gemiler hafta
+   * sonunda çıkar); seçili filo varken imlecin altındaki deniz ("buraya").
+   */
+  drawFleetOrders(ctx, world, rect, playerId, ours) {
+    const geo = this.geometry(world);
+    const zoom = this.renderer.camera.zoom;
+    const U = this.renderer.upright;
+    ctx.save();
+    for (const list of ours.values()) {
+      for (const mark of list) {
+        if (mark.mode !== 'sea' || mark.target == null || !geo.anchors[mark.target]) continue;
+        const selected = this.selectedFleet === mark.id;
+        // Yol yalnız düz kamerada (eğik kamerada dik geçiş zemine çizgi yatıramaz).
+        if (mark.target !== mark.zone && !U) {
+          const pts = this.routePoints(world, mark.zone, mark.target);
+          if (pts) this.strokeRoute(ctx, world, pts, rect, zoom, MODE_COLORS.sea, selected ? 3.2 : 2.2);
+        }
+        if (selected || mark.target !== mark.zone) {
+          const anchor = geo.anchors[mark.target];
+          for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P, 60 / zoom)) {
+            if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
+            this.targetRing(ctx, anchor.x + dx, anchor.y, zoom, MODE_COLORS.sea);
+          }
+        }
+      }
+    }
+    if (this.selectedFleet != null && this.hoverZone != null && geo.anchors[this.hoverZone]) {
+      const anchor = geo.anchors[this.hoverZone];
+      for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P, 60 / zoom)) {
+        if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
+        this.targetRing(ctx, anchor.x + dx, anchor.y, zoom, '#ffe39a', 'Right-click: send the fleet here');
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Hedef halkası (kesik, bölge çapasının çevresinde) ve isteğe bağlı etiket. */
+  targetRing(ctx, x, y, zoom, color, label = null) {
+    const z = 1 / zoom;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(6, 12, 16, 0.75)';
+    ctx.lineWidth = 4.5 * z;
+    ctx.setLineDash([7 * z, 5 * z]);
+    ctx.beginPath();
+    ctx.arc(x, y + 12 * z, 40 * z, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.2 * z;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (label) {
+      ctx.font = `600 ${12 * z}px ${FONT_UI}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 3 * z;
+      ctx.strokeStyle = 'rgba(6, 12, 16, 0.9)';
+      ctx.strokeText(label, x, y + 56 * z);
+      ctx.fillStyle = color;
+      ctx.fillText(label, x, y + 56 * z);
+    }
+    ctx.restore();
+  }
+
+  /** İki bölge arasında su üstünden yol noktaları (dünya, sarmal açılmış). */
+  routePoints(world, from, to) {
+    const geo = this.geometry(world);
+    const route = this.zoneRoute(world, from, to);
+    if (!route || route.length < 2) return null;
+    const pts = [];
+    let shift = 0;
+    for (let i = 1; i < route.length; i++) {
+      const line = this.edgeLine(world, route[i - 1], route[i]);
+      if (!line || line.length < 4) continue;
+      // edgeLine küçükten büyüğe çizilir: yön ters ise çevir.
+      const forward = route[i - 1] < route[i];
+      const seg = [];
+      for (let k = 0; k < line.length; k += 2) seg.push([line[k], line[k + 1]]);
+      if (!forward) seg.reverse();
+      for (const [x, y] of seg) {
+        if (pts.length && geo.P) {
+          const lastX = pts[pts.length - 1][0];
+          if (x + shift - lastX > geo.P / 2) shift -= geo.P;
+          else if (lastX - (x + shift) > geo.P / 2) shift += geo.P;
+        }
+        pts.push([x + shift, y]);
+      }
+    }
+    return pts.length >= 2 ? pts : null;
+  }
+
+  /** Kesik rota çizgisi ve hedefte ok ucu (her sarmal kopyada). */
+  strokeRoute(ctx, world, pts, rect, zoom, color, width = 3) {
+    const P = this.geometry(world).P;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const dx of P ? [-P, 0, P] : [0]) {
+      const xs = pts.map((p) => p[0] + dx);
+      if (Math.max(...xs) < rect.minX - 200 || Math.min(...xs) > rect.maxX + 200) continue;
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0] + dx, pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] + dx, pts[i][1]);
+      ctx.setLineDash([10 / zoom, 6 / zoom]);
+      ctx.lineWidth = (width + 2.4) / zoom;
+      ctx.strokeStyle = 'rgba(6, 12, 16, 0.55)';
+      ctx.stroke();
+      ctx.lineWidth = width / zoom;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const [x1, y1] = pts[pts.length - 1];
+      const [x0, y0] = pts[Math.max(0, pts.length - 3)];
+      const a = Math.atan2(y1 - y0, x1 - x0);
+      const L = 11 / zoom;
+      ctx.beginPath();
+      ctx.moveTo(x1 + dx, y1);
+      ctx.lineTo(x1 + dx - L * Math.cos(a - 0.45), y1 - L * Math.sin(a - 0.45));
+      ctx.lineTo(x1 + dx - L * Math.cos(a + 0.45), y1 - L * Math.sin(a + 0.45));
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -753,7 +1079,7 @@ export class SeaLayer {
     for (const [zoneId, mark] of marks) {
       const anchor = geo.anchors[zoneId];
       if (!anchor) continue;
-      const { pills, top } = this.seaInfoPills(world, zoneId, mark, zoom);
+      const { pills, top } = this.seaInfoPills(world, zoneId, mark, zoom, playerId);
       if (!pills.length) continue;
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
         if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
@@ -794,19 +1120,20 @@ export class SeaLayer {
       if (anchor) out.push({ kind, x: anchor.x, y: anchor.y, dx, dy, w, h });
     };
     // drawFleets ile aynı kapı: hiç filo yoksa disk de çizilmez.
-    if (state.presence?.size || state.subs?.size) {
-      ctx.font = MARK_FONT.badge(1);
-      for (const [zoneId, here] of state.presence ?? []) {
-        const rows = fleetRows(world, playerId, here, (row) => seas || row.rel !== 'other');
-        if (!rows.length) continue;
-        const { total } = badgeLayout(measure, rows, false, 1);
-        box('fleet', zoneId, -total / 2, MARK.badgeTop, total, MARK.badgeH);
+    const ours = this.ourCounters(world, playerId);
+    if (state.presence?.size || state.subs?.size || ours.size) {
+      for (const zoneId of this.rowZones(world, playerId, seas, ours)) {
+        const row = this.zoneRow(world, playerId, zoneId, zoom, seas, ours);
+        if (!row.counters.length && !row.badges.length) continue;
+        box('fleet', zoneId, -row.total / 2, MARK.badgeTop, row.total, row.h);
       }
+      ctx.font = MARK_FONT.badge(1);
       for (const [zoneId, here] of state.subs ?? []) {
         const rows = fleetRows(world, playerId, here, (row) => seas || row.rel === 'ours' || row.rel === 'enemy');
         if (!rows.length) continue;
         const { total } = badgeLayout(measure, rows, true, 1);
-        box('subs', zoneId, -total / 2, MARK.badgeTop + MARK.badgeH + MARK.rowGap, total, MARK.subH);
+        const rowH = this.rowHeight(world, playerId, zoneId, seas, ours);
+        box('subs', zoneId, -total / 2, MARK.badgeTop + (rowH ? rowH + MARK.rowGap : 0), total, MARK.subH);
       }
       ctx.font = MARK_FONT.label(1);
       for (const mark of this.recentMarks(world, playerId, seas)) {
@@ -828,7 +1155,7 @@ export class SeaLayer {
       if (seas) {
         ctx.font = MARK_FONT.pill(1);
         for (const [zoneId, mark] of marks) {
-          const { pills, top } = this.seaInfoPills(world, zoneId, mark, zoom);
+          const { pills, top } = this.seaInfoPills(world, zoneId, mark, zoom, playerId);
           pills.forEach((pill, index) => {
             const w = pillWidth(measure, pill, 1);
             box('pill', zoneId, -w / 2, top + index * MARK.pillStep, w, MARK.pillH);
@@ -840,14 +1167,11 @@ export class SeaLayer {
   }
 
   /** Bölgenin hapları ve ilk hapın çapadan uzaklığı (ekran px). */
-  seaInfoPills(world, zoneId, mark, zoom) {
+  seaInfoPills(world, zoneId, mark, zoom, playerId = -1) {
     const state = world.navyState;
-    const turn = world.turn ?? 0;
     const pills = [];
-    for (const row of mark.underway) {
-      const weeks = Math.max(0, row.eta - turn);
-      pills.push({ text: `+${row.count} · ${weeks <= 0 ? 'this wk' : `${weeks} wk`}`, color: ROUTE_COLOR, dash: true, flag: true });
-    }
+    // Yoldaki gemilerimiz artık filonun sayacıdır (kesik çerçeve + "2 wk"):
+    // ayrıca "+3 · 2 wk" hapı aynı şeyi ikinci kez söylüyordu.
     if (zoom >= 0.35) {
       if (mark.onUs > 0.01) pills.push({ text: `Blockading us ${Math.round(mark.onUs * 100)}%`, color: MARK_COLORS.enemy });
       const byUs = [...mark.byUs].sort((a, b) => b.share - a.share);
@@ -856,9 +1180,10 @@ export class SeaLayer {
       }
       if (byUs.length > (mark.onUs > 0.01 ? 1 : 2)) pills.push({ text: `+${byUs.length - (mark.onUs > 0.01 ? 1 : 2)}`, color: MARK_COLORS.ours });
     }
-    // Rozet satırlarının altından başla: filo ve denizaltı satırı.
+    // Rozet satırlarının altından başla: filo (sayaç ya da rozet) ve denizaltı satırı.
     let top = MARK.badgeTop;
-    if (state?.presence?.get(zoneId)?.size) top += MARK.badgeH + MARK.rowGap;
+    const rowH = this.rowHeight(world, playerId, zoneId, true);
+    if (rowH) top += rowH + MARK.rowGap;
     if (state?.subs?.get(zoneId)?.size) top += MARK.subH + MARK.rowGap;
     return { pills, top };
   }
@@ -901,67 +1226,14 @@ export class SeaLayer {
   drawUnderway(ctx, world, rect, playerId) {
     if (playerId < 0) return;
     const marks = seaZoneMarks(world, playerId);
-    const geo = this.geometry(world);
     const zoom = this.renderer.camera.zoom;
-    const shifts = geo.P ? [-geo.P, 0, geo.P] : [0];
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
     for (const [zoneId, mark] of marks) {
       for (const row of mark.underway) {
         if (!(row.from >= 0) || row.from === zoneId) continue;
-        const route = this.zoneRoute(world, row.from, zoneId);
-        if (!route || route.length < 2) continue;
-        const pts = [];
-        let shift = 0;
-        for (let i = 1; i < route.length; i++) {
-          const line = this.edgeLine(world, route[i - 1], route[i]);
-          if (!line || line.length < 4) continue;
-          // edgeLine küçükten büyüğe çizilir: yön ters ise çevir.
-          const forward = route[i - 1] < route[i];
-          const seg = [];
-          for (let k = 0; k < line.length; k += 2) seg.push([line[k], line[k + 1]]);
-          if (!forward) seg.reverse();
-          for (const [x, y] of seg) {
-            if (pts.length && geo.P) {
-              const lastX = pts[pts.length - 1][0];
-              if (x + shift - lastX > geo.P / 2) shift -= geo.P;
-              else if (lastX - (x + shift) > geo.P / 2) shift += geo.P;
-            }
-            pts.push([x + shift, y]);
-          }
-        }
-        if (pts.length < 2) continue;
-        for (const dx of shifts) {
-          const xs = pts.map((p) => p[0] + dx);
-          if (Math.max(...xs) < rect.minX - 200 || Math.min(...xs) > rect.maxX + 200) continue;
-          ctx.beginPath();
-          ctx.moveTo(pts[0][0] + dx, pts[0][1]);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] + dx, pts[i][1]);
-          ctx.setLineDash([10 / zoom, 6 / zoom]);
-          ctx.lineWidth = 5.4 / zoom;
-          ctx.strokeStyle = 'rgba(6, 12, 16, 0.55)';
-          ctx.stroke();
-          ctx.lineWidth = 3 / zoom;
-          ctx.strokeStyle = ROUTE_COLOR;
-          ctx.stroke();
-          ctx.setLineDash([]);
-          // Ok ucu hedefte.
-          const [x1, y1] = pts[pts.length - 1];
-          const [x0, y0] = pts[Math.max(0, pts.length - 3)];
-          const a = Math.atan2(y1 - y0, x1 - x0);
-          const L = 11 / zoom;
-          ctx.beginPath();
-          ctx.moveTo(x1 + dx, y1);
-          ctx.lineTo(x1 + dx - L * Math.cos(a - 0.45), y1 - L * Math.sin(a - 0.45));
-          ctx.lineTo(x1 + dx - L * Math.cos(a + 0.45), y1 - L * Math.sin(a + 0.45));
-          ctx.closePath();
-          ctx.fillStyle = ROUTE_COLOR;
-          ctx.fill();
-        }
+        const pts = this.routePoints(world, row.from, zoneId);
+        if (pts) this.strokeRoute(ctx, world, pts, rect, zoom, ROUTE_COLOR, 3);
       }
     }
-    ctx.restore();
   }
 
   /** İki bölge arasında komşuluk grafında en kısa bölge dizisi (BFS, önbellekli). */

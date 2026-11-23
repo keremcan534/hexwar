@@ -15360,11 +15360,12 @@ body.screen-open .battle-strip { display: none; }
 
 /* ==========================================================================
    §58 DONANMA PANELİ (ui/navyDock.js) — deniz haritası (Seas kipi) açıkken
-   sağ üstte. Yukarıdan aşağı: başlık (güç), AT WAR (düşman filoları), WHERE
-   THE FLEET IS (grup grup), SEA ORDERS (yalnız bu bölüm kayar), TRADE &
-   TRANSPORTS, SUBMARINES, FLEET (hurda, yeni gemi), LAST SEA ACTION (sabit
-   yuva). Muharebe kartı gövdenin yerine açılır. Yazı en az 12 px; yalnız
-   küçük versal bölüm etiketleri 11 px.
+   ya da haritada filo seçiliyken sağ üstte. Yukarıdan aşağı: başlık (güç),
+   savaş şeridi (düşman filoları, iki kıyının ablukası), FİLOLAR, DENİZLER,
+   yollar/tümenler/denizaltı, tersane, LAST SEA ACTION (sabit yuva). Muharebe
+   ve deniz kartı gövdenin yerine açılır. Filo kartı, deniz satırı ve deniz
+   kartının kuralları skin katmanındadır (hud.css "DONANMA FİLOLARI").
+   Yazı en az 12 px; yalnız küçük versal bölüm etiketleri 11 px.
    ========================================================================== */
 .navy-dock {
   position: fixed;
@@ -15440,7 +15441,7 @@ body.picker-open .navy-dock { display: none; }
 }
 .nd-sec small { margin-left: 6px; color: var(--text-faint); font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 
-/* Gövde: sığmazsa (1366×768) kayar; SEA ORDERS önce kendi içinde daralır. */
+/* Gövde: panelin TEK kaydırma alanı (yalnız kısa ekranda kayar); içinde kayan kutu yok. */
 .nd-body { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow-y: auto; }
 .nd-body > section { flex: none; padding: 6px 12px; border-bottom: 1px solid var(--line); }
 .nd-empty { margin: 0; padding: 10px 12px; color: var(--text-mute); font-size: 12.5px; line-height: 1.45; }
@@ -15475,78 +15476,13 @@ body.picker-open .navy-dock { display: none; }
 .nd-war-sum { overflow: hidden; color: var(--text-dim); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
 .nd-war.peace .nd-war-sum { color: var(--text-mute); }
 
-/* WHERE THE FLEET IS: grup başına sabit 26 px satır. */
-.nd-where .nd-sec { margin-bottom: 2px; }
-.nd-sq {
-  display: grid;
-  grid-template-columns: 14px minmax(0, 132px) 24px minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-  height: 26px;
-  font-size: 12.5px;
-  cursor: var(--cur-default);
-}
-.nd-sq.pad { visibility: hidden; }
-.nd-sq.dim { grid-template-columns: minmax(0, 1fr); }
+/* Hâl glifi ve deniz adı düğmesi (filo kartının hâl satırı). */
 .nd-glyph { color: var(--text-mute); font-style: normal; text-align: center; }
-.nd-sq.station .nd-glyph { color: #8fd39a; }
-.nd-sq.underway .nd-glyph { color: #f0d795; }
-.nd-sq.withdrawn .nd-glyph, .nd-sq.repairing.bad .nd-glyph { color: #ff8f6e; }
 .nd-place { min-width: 0; overflow: hidden; padding: 0; border: 0; background: none; color: var(--text); font-family: var(--font-display); font-size: 14px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 button.nd-place { cursor: var(--cur-pointer); }
 button.nd-place:hover { color: var(--gold-bright); }
-.nd-count { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
-.nd-sqs { overflow: hidden; color: var(--text-dim); text-overflow: ellipsis; white-space: nowrap; }
-.nd-sq.station .nd-sqs { color: #b9d68a; }
-.nd-sq.station.warn .nd-sqs { color: #e8bd66; }
-.nd-sq.withdrawn .nd-sqs { color: #ff8f6e; }
-.nd-sqs b.bad { font-weight: 650; }
-.nd-sq[data-nd-hz]:hover { background: rgba(186, 160, 100, 0.06); }
 
-/* SEA ORDERS: yalnız liste kayar; en az üç satırlık yer. */
-.nd-orders { display: flex; flex: 1 1 auto !important; flex-direction: column; min-height: 132px; padding-bottom: 0 !important; }
-.nd-orders-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; height: 24px; margin-bottom: 2px; }
-.nd-list { flex: 1 1 auto; min-height: 0; margin: 0 -12px; padding: 0 10px 6px; overflow-y: auto; }
-/* Kısa ekranda (1366×768, 1280×720) gövde de kayıyordu: iç içe iki kaydırma
-   çubuğu, listede bir buçuk satır. Orada liste akar, yalnız gövde kayar. */
-@media (max-height: 820px) {
-  .nd-orders { flex: none !important; min-height: 0; }
-  .nd-list { flex: none; overflow: visible; }
-}
-.nd-row { --ln: #8fb8d6; position: relative; padding: 5px 6px 5px 12px; border-bottom: 1px solid var(--line); }
-.nd-row:last-child { border-bottom: 0; }
-.nd-row::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 0;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
-  background: var(--nd-tone, #5b6f7f);
-}
-.nd-row.ours { --nd-tone: #6fbf7c; }
-.nd-row.enemy { --nd-tone: #d8644c; }
-.nd-row.contested { --nd-tone: #e0a848; }
-.nd-row:hover, .nd-row.focus { background-color: rgba(186, 160, 100, 0.06); }
-.nd-row.focus { box-shadow: inset 0 0 0 1px rgba(214, 186, 120, 0.4); }
-.nd-row.pinned { background-color: rgba(214, 186, 120, 0.05); }
-.nd-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; height: 22px; }
-.nd-name {
-  min-width: 0;
-  overflow: hidden;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text);
-  font-family: var(--font-display);
-  font-size: 14.5px;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: var(--cur-pointer);
-}
-.nd-name:hover { color: var(--gold-bright); }
+/* Deniz etiketi, gemi sayısı ve hâkimiyet çubuğu (deniz satırı ve kartı). */
 .nd-tag {
   flex: none;
   padding: 0 4px;
@@ -15562,19 +15498,10 @@ button.nd-place:hover { color: var(--gold-bright); }
 .nd-tag.home { border-color: rgba(131, 154, 107, 0.5); color: var(--green); }
 .nd-tag.enemy { border-color: rgba(169, 94, 74, 0.55); color: #e0866a; }
 .nd-tag.pin { border-color: rgba(214, 186, 120, 0.6); color: var(--gold-bright); }
-.nd-unpin { flex: none; padding: 0 4px; border: 0; background: none; color: var(--text-mute); font: 12px var(--font-ui); text-decoration: underline; cursor: var(--cur-pointer); }
-.nd-unpin:hover { color: var(--text); }
 .nd-ships { display: inline-flex; flex: none; align-items: baseline; gap: 3px; margin-left: auto; cursor: var(--cur-default); }
 .nd-ships b { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
 .nd-ships b.bad { color: #ff8f6e; }
 .nd-ships small { color: var(--text-mute); font-size: 12px; }
-.nd-pend { margin-left: 3px; font-size: 12px; font-style: normal; font-weight: 600; white-space: nowrap; }
-.nd-pend.up { color: #b9d68a; }
-.nd-pend.down { color: #e8bd66; }
-.nd-pv { margin-left: 2px; font-size: 12px; font-style: normal; font-weight: 700; white-space: nowrap; }
-.nd-pv:empty { display: none; }
-.nd-pv.up { color: #e8bd66; }
-.nd-pv.down { color: #ff8f6e; }
 .nd-ctl {
   flex: none;
   width: 70px;
@@ -15589,36 +15516,9 @@ button.nd-place:hover { color: var(--gold-bright); }
 .nd-ctl.quiet { background: var(--surface-sunken); }
 .nd-ctlv { flex: none; min-width: 32px; color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
 .nd-ctlv.dim { color: var(--text-faint); }
-.nd-row-mid { display: flex; align-items: center; gap: 8px; height: 26px; min-width: 0; }
 .nd-pri { flex: none; }
 .nd-pri .pl-pb { height: 22px; padding: 0 6px; font-size: 12px; }
 .nd-pri .pl-pb.auto { min-width: 40px; }
-/* Tek satır: kırılan etki satırı satırı oynatıyordu (8x jitter). Fazlası ipucunda. */
-.nd-fx { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--text-mute); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; cursor: var(--cur-default); }
-.nd-fx > i { margin: 0 4px; color: var(--text-faint); font-style: normal; }
-.nd-fc { height: 18px; overflow: hidden; padding-left: 2px; color: var(--text-dim); font-size: 12px; line-height: 18px; white-space: nowrap; text-overflow: ellipsis; cursor: var(--cur-default); }
-.nd-fc.bad { color: #ff8f6e; }
-.nd-fc.good { color: #b9d68a; }
-.nd-fc.warn { color: #e8bd66; }
-.nd-quiet {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  height: 26px;
-  padding: 0 6px 0 12px;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  background: none;
-  color: var(--text-mute);
-  font: 12.5px var(--font-ui);
-  text-align: left;
-  cursor: var(--cur-pointer);
-}
-.nd-quiet span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nd-quiet i { font-style: normal; }
-.nd-quiet:hover { color: var(--text); }
-
 /* TRADE & TRANSPORTS: etiket · değer, satır başına 22 px. */
 .nd-trade .nd-sec { margin-bottom: 1px; }
 .nd-tl {
@@ -15640,27 +15540,15 @@ button.nd-place:hover { color: var(--gold-bright); }
 .nd-tl.click:hover .v { text-decoration: underline; text-decoration-color: rgba(214, 186, 120, 0.5); }
 .nd-tl .k { color: var(--text-mute); white-space: nowrap; }
 .nd-tl .v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nd-subs { padding-top: 2px !important; padding-bottom: 2px !important; }
 /* Denizaltı resmi yatay: kare 18 px'te gövde 6 px'e iner; satır 22 px'i aşmaz. */
 .nd-tl .k .art { width: 24px; height: 20px; margin: 0 3px 0 -3px; }
 
-/* FLEET: kapalıyken tek satır (sınıf karışımı + eskiler). */
-.nd-fleet { flex: none; border-bottom: 1px solid var(--line); }
-.nd-fleet > summary { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 12px; color: var(--text-mute); cursor: var(--cur-pointer); list-style: none; }
-.nd-fleet > summary::-webkit-details-marker { display: none; }
-.nd-fleet > summary::before {
-  content: ''; flex: none; width: 5px; height: 5px; margin: 0 2px 0 -1px;
-  border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg);
-}
-.nd-fleet[open] > summary::before { margin: -3px 2px 0 0; transform: rotate(45deg); }
-.nd-fsum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* TERSANE: sınıf başına gövde ve hurda (açılınca). */
 .nd-frow { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 28px; padding: 0 10px 0 12px; }
 .nd-frow > b { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
 .nd-frow > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .nd-frow > small { color: var(--text-mute); font-size: 12px; }
 .nd-fbtn { display: flex; gap: 4px; }
-.nd-build { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px 0 12px; border-top: 1px solid var(--line); }
-.nd-build .k { width: 40px; color: var(--text-mute); }
 .nd-train { padding: 0 12px 6px; color: var(--text-dim); font-size: 12px; }
 
 /* LAST SEA ACTION: sabit 64 px (jitter kuralı). */
@@ -15716,6 +15604,7 @@ button.nd-act:hover { text-decoration: underline; }
 .nd-card-after p { margin: 2px 0; color: var(--text-dim); font-size: 12.5px; line-height: 1.4; }
 .nd-card-foot { display: flex; flex: none; align-items: center; justify-content: space-between; margin-top: auto; padding: 6px 12px 8px; border-top: 1px solid var(--line); }
 .nd-rule { color: var(--text-mute); font-size: 12px; text-decoration: underline dotted; cursor: var(--cur-default); }
+
 /* Ordu paneli (armyPanel): emirle giden tümen cepheyi izlemez; denizdeki kayıp uyarısı. */
 .ap-front-note { margin: 2px 0 0; color: var(--text-mute); font-size: 12px; }
 .ap-title small.warn { color: #ff8f6e; }

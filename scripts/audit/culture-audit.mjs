@@ -165,8 +165,10 @@ const ENC_FLOOR = { kuzey: [3.5, Infinity], bilesik: [5.0, Infinity], kavsak: [3
 const results = {
   structure: {
     // Eski dunya 22 kulturluydu ve tek renk bloklar halinde okunuyordu. D3'ten
-    // beri imparatorluklarin alt halklari +18-24 kultur ekler (tasarim: 54-62).
-    enoughCultures: runs.every((r) => r.cultures >= 54 && r.cultures <= 62),
+    // beri imparatorluklarin alt halklari +18-24 kultur ekler (tasarim: 54-62;
+    // olculen 52-55, aralik zaten kirmiziydi). Etnik mozaik (cultureGen 2,
+    // 2026-11-23: yama kusagi, kardes halklar) 160x96'ya +5-10 ekler: 56-72.
+    enoughCultures: runs.every((r) => r.cultures >= 56 && r.cultures <= 72),
     enoughFamilies: runs.every((r) => r.families >= 6),
     mixWellFormed: runs.every((r) => r.malformed === 0),
   },

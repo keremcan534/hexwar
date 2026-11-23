@@ -27,6 +27,7 @@ import { GpuTimer } from './gpuTimer.js';
 import { TERRAIN_GLSL } from './gfx/terrainGLSL.js';
 import { SEASON_GLSL, SEASON_UNIFORMS } from './living/seasonGLSL.js';
 import { buildClimateRaster } from './living/climate.js';
+import { GL_MAX_PER_TILE } from './borderMesh.js';
 
 const HEX_STEP = SQRT3 * HEX_SIZE;
 const ROW_H = HEX_SIZE * 1.5;
@@ -280,7 +281,7 @@ vec4 fillCells(vec2 world, vec2 raw, vec2 cell, out float w) {
   float primary = own;
   float dMin = 1e9;
   float across = own;
-  for (int i = 0; i < 64; i++) {
+  for (int i = 0; i < ${GL_MAX_PER_TILE}; i++) {
     if (i >= n) break;
     int k = (start + i) * 2;
     vec4 seg = texelFetch(uSegData, ivec2(k % uSegW, k / uSegW), 0);

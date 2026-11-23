@@ -111,7 +111,7 @@ const stripe = (a, b) => hueGap(a.hue, b.hue) / 3 + Math.abs(a.sat - b.sat) + Ma
  * Halkın rengi: komşu halklardan ayrılana dek altın açıyla döner. Üç turda
  * ayrılamazsa denenenlerin en ayrığı kalır.
  */
-function paint(id, family, rng, neighbours) {
+export function paint(id, family, rng, neighbours) {
   let palette = cultureColor(id, family, rng);
   const clash = (p) => neighbours.some(
     (o) => hueGap(p.hue, o.hue) < PEOPLES.HUE_GAP || stripe(p, o) < PEOPLES.STRIPE_GAP,
@@ -620,7 +620,7 @@ function startHomeRule(world, nation, spec, made, capital) {
  * düzelir (ölçüldü: CULTURE-C'de iki eski halk 13.3, culture-audit tabanda
  * kırmızıydı). Zar çekmez; yalnız renk değişir.
  */
-function separateStripes(world) {
+export function separateStripes(world) {
   const cultures = world.cultures;
   const pairs = new Map();
   for (const p of world.provinces) {
@@ -653,7 +653,7 @@ function separateStripes(world) {
 }
 
 /** Kültür sayaçları bileşimden yeniden kurulur (cultures.mixCultures ile aynı tanım). */
-function recountCultures(world) {
+export function recountCultures(world) {
   for (const culture of world.cultures) {
     culture.tiles = 0;
     culture.presence = 0;

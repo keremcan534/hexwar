@@ -480,3 +480,63 @@ Dosya: `arayuz/saat-blogu.webp`; dilim `assets/ui/clock/`.
 > (5) A round domed brass push button 120×120 with a raised PLAY triangle cast into it.
 > (6) The same push button 120×120 with two raised PAUSE bars cast into it.
 
+
+## 24-25. Çerçeve armaları ve süsleri, ultra gerçekçi: 2 sayfa × 6 parça (tamamlandı, oyunda)
+
+Bağlandı (hud.css "ÇERÇEVE ARMALARI"): minimap ve olay kartı kartal, savaş kutusu kılıç, donanma
+paneli çapa, olay kartı başlığı ayraç, yönetim penceresi dört köşe süsü (corner + aynadaki üç
+kopya). Henüz kullanılmayan: wheat, shield, gear, finial, keystone, pendant, wings.
+
+Kerem 2026-11-23: "arayüz karelerinin üstünde kartal olur, yanlara doğru süsler olur, ya da başak
+bir simge olur yanlara kanat açar; süsleyelim etrafı". Ekran penceresinin üst ortasına oturan arma
+(ekranın konusuna göre), modal ve olay kartlarının tepesi, çerçeve köşeleri, başlık ayraçları.
+Hepsi düz önden, simetrik; ölçek CSS'te küçülür (ekranda ~40-60 px boy), kaynak büyük olmalı.
+Renk pirinçtir: parti tonu (ui/partyTint.js) üstüne CSS ile biner, resimde renkli emaye yok.
+Dosyalar: `arayuz/arma-1.webp`, `arayuz/arma-2.webp`; dilim `assets/ui/crest/`.
+Dilimden sonra saydam kenar kırpılır (finish_arrows gibi), kare tuval kalmaz.
+
+slice-sheets.py satırları:
+    ('arayuz/arma-1.webp','assets/ui/crest','2x3',720,'eagle,wheat,shield,gear,sabres,anchor'),
+    ('arayuz/arma-2.webp','assets/ui/crest','2x3',720,'corner,divider,finial,keystone,pendant,wings'),
+
+### 24. Sayfa 1: konu armaları (kanatlı, yanlara açılan)
+
+> One image, 1536×1024, six separate ornaments in a 2-column × 3-row grid on a solid pure magenta
+> (#FF00FF) background, 48 px magenta gutters, nothing touching the edges or each other.
+> ULTRA-REALISTIC studio product photography of cast architectural ornaments from a 1910s ministry
+> building: aged polished brass with dark bronze patina in the recesses, crisp cast relief, fine
+> chasing marks, warm studio light from the upper left, sharp focus. Every ornament is PERFECTLY
+> FRONT-ON, bilaterally symmetric, wide and low (about 3:1), with a flat bottom edge so it can sit on
+> top of a frame. ABSOLUTELY NO text, letters, numbers, ribbons with writing, flags or real-country
+> coats of arms. No drop shadow on the background, no magenta reflections on the metal.
+> (1) A single-headed eagle with wings spread wide and flat to both sides, head turned left, perched
+> on a short moulded plinth, long feathered wing tips sweeping outward.
+> (2) A tied wheat sheaf in the centre with a pair of feathered wings opening to both sides and small
+> laurel sprigs at the base.
+> (3) A blank heraldic shield under a simple closed crown, flanked by curling acanthus scrolls that
+> run out to both sides.
+> (4) A toothed industrial gear wheel in the centre with a pair of wings opening to both sides
+> (winged wheel of industry), plain hub, no tools or political symbols.
+> (5) Two crossed cavalry sabres behind a laurel wreath, with a pair of wings opening to both sides.
+> (6) A ship's anchor with a coiled rope in the centre, flanked by curling wave scrolls and small
+> wings running out to both sides.
+
+### 25. Sayfa 2: çerçeve süsleri
+
+> One image, 1536×1024, six separate ornaments in a 2-column × 3-row grid on a solid pure magenta
+> (#FF00FF) background, 48 px magenta gutters, nothing touching the edges or each other.
+> Same material and light as a matching set: ULTRA-REALISTIC cast aged brass with dark bronze patina,
+> crisp relief, warm studio light from the upper left, PERFECTLY FRONT-ON, no perspective.
+> ABSOLUTELY NO text, letters or numbers. No drop shadow on the background, no magenta reflections.
+> (1) A corner bracket for the TOP-LEFT corner of a rectangular frame: an L-shaped acanthus leaf
+> ornament, about 220×220, both arms tapering to a thin point, a small rosette at the corner.
+> (2) A long thin horizontal divider about 640×70: a slim moulded bar that tapers to fine points at
+> both ends, with a small round rosette in the exact centre and tiny leaf scrolls either side of it.
+> (3) A title bar end cap for the LEFT end of a header, about 120×120: a curling scroll volute with a
+> small acorn finial, flat on its right side so it butts against the bar.
+> (4) A keystone medallion about 200×200: a round brass boss with a raised rim and an EMPTY, flat,
+> slightly recessed centre (an icon is placed there by code), small leaf scrolls at left and right.
+> (5) A hanging pendant ornament about 200×140 for the bottom centre of a frame: a small downward
+> pointing drop with acanthus leaves, flat top edge.
+> (6) A pair of feathered wings only, spread wide and flat, about 600×170, with an EMPTY gap in the
+> centre (an emblem is placed between them by code).

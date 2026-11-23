@@ -36,13 +36,27 @@ OUT_DIR = os.path.join(ROOT, 'assets', 'minis')
 OUT_JS = os.path.join(ROOT, 'src', 'render', 'miniAtlas.js')
 CACHE = os.path.join(tempfile.gettempdir(), 'hexwar-minis')
 
-CELL = 160
-MASK_SCALE = 2
+# 2026-11-23 (Kerem: "hâlâ düşük kaliteli png gibi"): 160 px hücrede piyade ~50 px boyundaydı,
+# tek örnekli filtre + gürültü giderici onu yumuşatıyordu, yarım çözünürlüklü maske de ulus
+# rengini yüze ve tüfeğe taşırıyordu. Şimdi hücre 192, kare iki kat büyük pişip doğrusal
+# ışıkta küçültülür (kenar keskin, tırtıksız) ve maske tam çözünürlüktedir.
+CELL = 192
+SUPERSAMPLE = 2
+MASK_SCALE = 1
+# Bu ölçüden önce pişmiş türler (deniz) çalışma anında bu varsayılanla okunur.
+LEGACY_CELL = 160
+LEGACY_MASK_SCALE = 2
+# Gölge yakalayıcının güneş gölgesi neredeyse siyahtı (%85+): figürün yanında yapıştırılmış
+# koyu bir leke gibi duruyordu. Arka ışık zemini de aydınlattığı için gölge artık ~%60'ta;
+# paketlerken örtü bu payla bir kez daha ayarlanır (yeniden render gerekmez, --pack yeter).
+# Temas gölgesi (ayak, palet) en koyu yer olarak kalır.
+SHADOW_KEEP = 0.9
+SHARPEN = 0.45
 ELEVATION = math.radians(35)
 ANIMS = (('idle', 6), ('walk', 8), ('fire', 6))
 DIRECTIONS = 8
-WEBP_QUALITY = 88
-MASK_QUALITY = 82
+WEBP_QUALITY = 90
+MASK_QUALITY = 86
 
 
 def log(*parts):
@@ -101,12 +115,28 @@ def stage(spec, samples):
 
     sun_data = bpy.data.lights.new('gunes', 'SUN')
     sun_data.energy = 3.9
-    sun_data.angle = math.radians(15)
+    sun_data.angle = math.radians(18)
     sun_data.color = (1.0, 0.95, 0.86)
     sun = bpy.data.objects.new('gunes', sun_data)
     scene.collection.objects.link(sun)
     sun.rotation_mode = 'QUATERNION'
     sun.rotation_quaternion = Vector((-0.40, -0.30, 0.92)).to_track_quat('Z', 'Y')
+
+    # Arka kenar ışığı (gölgesiz, serin): omuz, miğfer ve namlunun üst kenarı parlar, siluet
+    # haritadan ışıkla ayrılır. Eskiden bu işi tarayıcıdaki koyu kontur yapıyordu ve figür
+    # kesilip yapıştırılmış bir çıkartma gibi okunuyordu.
+    rim_data = bpy.data.lights.new('kenar', 'SUN')
+    rim_data.energy = 2.6
+    rim_data.angle = math.radians(8)
+    rim_data.color = (0.80, 0.88, 1.0)
+    if hasattr(rim_data, 'use_shadow'):
+        rim_data.use_shadow = False
+    if hasattr(rim_data, 'cycles') and hasattr(rim_data.cycles, 'cast_shadow'):
+        rim_data.cycles.cast_shadow = False
+    rim = bpy.data.objects.new('kenar', rim_data)
+    scene.collection.objects.link(rim)
+    rim.rotation_mode = 'QUATERNION'
+    rim.rotation_quaternion = Vector((0.45, 0.85, 0.42)).to_track_quat('Z', 'Y')
 
     world = bpy.data.worlds.new('gok')
     world.use_nodes = True
@@ -121,7 +151,7 @@ def stage(spec, samples):
 
     r = scene.render
     r.engine = 'CYCLES'
-    r.resolution_x = r.resolution_y = CELL
+    r.resolution_x = r.resolution_y = CELL * SUPERSAMPLE
     r.resolution_percentage = 100
     r.film_transparent = True
     r.use_persistent_data = True
@@ -141,7 +171,8 @@ def stage(spec, samples):
     c.transparent_max_bounces = 12
     c.seed = 7
     c.pixel_filter_type = 'BLACKMAN_HARRIS'
-    c.filter_width = 1.4
+    # İki kat çözünürlükte 1.5 px: son hücrede 0.75 px'lik süzgeç, kenar keskin kalır.
+    c.filter_width = 1.5
     return ground
 
 
@@ -306,6 +337,46 @@ def dilate_rgb(cell):
     return np.dstack((rgb, cell[..., 3]))
 
 
+def to_linear(c):
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def to_srgb(c):
+    c = np.clip(c, 0, 1)
+    return np.where(c <= 0.0031308, 12.92 * c, 1.055 * np.power(c, 1 / 2.4) - 0.055)
+
+
+def shrink(values, factor):
+    h, w = values.shape[:2]
+    return values.reshape(h // factor, factor, w // factor, factor, *values.shape[2:]).mean(axis=(1, 3))
+
+
+def finish_cell(beauty, mask):
+    """İki kat pişmiş kareyi hücreye indirir: gölge inceltilir, renk doğrusal ışıkta önçarpımlı
+    ortalanır (kenarda koyu/açık saçak kalmaz), iç kısım hafifçe keskinleşir. (rgba, maske) döner."""
+    figure = mask[..., 3]
+    alpha = beauty[..., 3]
+    # Gölge yalnız figür örtüsünün dışında kalan fazla örtüdür; duman/alev maskede örtülü olduğu
+    # için gölge sayılmaz (kit.finish_veil).
+    excess = np.clip(alpha - figure, 0, 1)
+    alpha2 = np.clip(figure + excess * SHADOW_KEEP, 0, 1)
+    pre = to_linear(beauty[..., :3]) * alpha[..., None]
+    pre = shrink(np.dstack((pre, alpha2)), SUPERSAMPLE)
+    a = pre[..., 3]
+    rgb = pre[..., :3] / np.maximum(a, 1e-4)[..., None]
+    rgb = to_srgb(np.clip(rgb, 0, 1))
+    if SHARPEN:
+        # Yalnız tam örtülü iç kısım: kenarda keskinleştirme açık/koyu hale bırakır.
+        pad = np.pad(rgb, ((1, 1), (1, 1), (0, 0)), mode='edge')
+        blur = (pad[:-2, 1:-1] + pad[2:, 1:-1] + pad[1:-1, :-2] + pad[1:-1, 2:] + 4 * rgb) / 8
+        apad = np.pad(a, 1, mode='edge')
+        solid = np.minimum.reduce([apad[:-2, 1:-1], apad[2:, 1:-1], apad[1:-1, :-2], apad[1:-1, 2:], a]) > 0.98
+        rgb = np.where(solid[..., None], np.clip(rgb + SHARPEN * (rgb - blur), 0, 1), rgb)
+    # Maske değeri örtüyle çarpılır: kenarda yarı örtülü piksel dolu boyanmasın.
+    value = shrink(mask[..., 0] * figure, SUPERSAMPLE)
+    return np.dstack((rgb, a)).astype(np.float32), value.astype(np.float32)
+
+
 def pack_type(key, tag):
     frames = sum(n for _, n in ANIMS)
     half = CELL // MASK_SCALE
@@ -318,13 +389,13 @@ def pack_type(key, tag):
             for index in range(count):
                 beauty = read_png(frame_path(key, tag, direction, anim, index, 'b'))
                 mask = read_png(frame_path(key, tag, direction, anim, index, 'm'))
+                cell, value = finish_cell(beauty, mask)
                 y, x = direction * CELL, column * CELL
-                beauty[..., 3] *= FADE
-                sheet[y:y + CELL, x:x + CELL] = dilate_rgb(beauty)
-                # Maske değeri örtüyle çarpılır: kenarda yarı örtülü piksel dolu boyanmasın.
-                value = mask[..., 0] * mask[..., 3]
-                small = value.reshape(half, MASK_SCALE, half, MASK_SCALE).mean(axis=(1, 3))
-                masks[direction * half:(direction + 1) * half, column * half:(column + 1) * half, 3] = small
+                cell[..., 3] *= FADE
+                sheet[y:y + CELL, x:x + CELL] = dilate_rgb(cell)
+                if MASK_SCALE > 1:
+                    value = shrink(value, MASK_SCALE)
+                masks[direction * half:(direction + 1) * half, column * half:(column + 1) * half, 3] = value
                 column += 1
     os.makedirs(OUT_DIR, exist_ok=True)
     base_path = os.path.join(OUT_DIR, f'{key}.webp')
@@ -341,7 +412,8 @@ FADE = edge_fade(CELL)
 
 def write_runtime(meta):
     anims = {name: {'start': sum(n for _, n in ANIMS[:i]), 'count': n} for i, (name, n) in enumerate(ANIMS)}
-    body = {'cell': CELL, 'maskScale': MASK_SCALE, 'directions': DIRECTIONS, 'anims': anims, 'types': meta}
+    # Üst düzeydeki ölçü eski koşuların türleri içindir; yeni türler kendi cell/maskScale'ini taşır.
+    body = {'cell': LEGACY_CELL, 'maskScale': LEGACY_MASK_SCALE, 'directions': DIRECTIONS, 'anims': anims, 'types': meta}
     text = ('// scripts/art/unit-minis.py yazar; elle değiştirme.\n'
             f'export const MINI_ATLAS = {json.dumps(body, ensure_ascii=False, indent=2)};\n')
     with open(OUT_JS, 'w', encoding='utf-8', newline='\n') as fh:
@@ -356,9 +428,9 @@ def preview_sheet(key, tag, spec, directions):
         cells = []
         for anim, count in ANIMS:
             for index in range(count):
-                b = read_png(frame_path(key, tag, direction, anim, index, 'b'))
-                m = read_png(frame_path(key, tag, direction, anim, index, 'm'))
-                value = (m[..., 0] * m[..., 3])[..., None]
+                b, value = finish_cell(read_png(frame_path(key, tag, direction, anim, index, 'b')),
+                                       read_png(frame_path(key, tag, direction, anim, index, 'm')))
+                value = value[..., None]
                 tint = tints[row % len(tints)] * 1.5
                 rgb = b[..., :3] * (1 - value + value * tint)
                 a = b[..., 3][..., None]
@@ -413,6 +485,8 @@ def main():
         with open(os.path.join(CACHE, key, tag, 'namlu.json'), encoding='utf-8') as fh:
             muzzles = json.load(fh)
         meta[key] = {
+            'cell': CELL,
+            'maskScale': MASK_SCALE,
             'worldSize': spec['worldSize'],
             'anchor': [0.5, round(0.5 + spec['focus'] * math.cos(ELEVATION) / spec['span'], 4)],
             # Oyundaki parıltı: yön başına namlu ağızları (u, v, açı, izdüşüm boyu) ve alev boyu.

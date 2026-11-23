@@ -44,6 +44,8 @@ import { workforceShare } from '../game/econ/resources.js';
 import { FOCUS, FOCUSES, FOCUS_BY_ID, focusSlots, nextSlotAt } from '../game/focus.js';
 import { focusBlockers, focusPreview, focusedStates, setFocus } from '../game/stateFocus.js';
 import { powerIncome } from '../game/politics.js';
+import { syncPartyTint } from './partyTint.js';
+import { WarBanners } from './warBanners.js';
 import {
   canRecruit, disband, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint,
   trainingWeeks,
@@ -225,6 +227,7 @@ const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select
 export class Hud {
   constructor(game) {
     this.game = game;
+    this.warBanners = new WarBanners(game);
     this.el = {
       seedChip: $('seed-chip'),
       seedValue: $('seed-value'),
@@ -375,10 +378,14 @@ export class Hud {
     const bar = this.el.warBar;
     const world = this.game.world;
     const me = world?.nations[this.game.turns.playerNation];
-    if (!bar || !me?.alive) { if (bar) bar.innerHTML = ''; return; }
+    if (!bar || !me?.alive) { if (bar) bar.innerHTML = ''; this.warBanners.sync(world, me, []); return; }
     const wars = world.nations.filter(
       (other) => other.alive && other.id !== me.id && atWar(world, me.id, other.id),
     );
+    // Yeni düşman: sekme şeridinin altından savaş sancakları iner (ui/warBanners.js).
+    this.warBanners.sync(world, me, wars);
+    // Künyedeki sancak da savaş biçimine geçer ya da barışla eski hâline döner.
+    if (Boolean(wars.length) !== Boolean(this.topFlagWar)) this.mountTopFlag();
     // Ültimatomlar: savaş henüz yok ama geri sayım var (bildirimi aşağıda düşer).
     const crises = world.nations.filter(
       (other) => other.alive && other.id !== me.id && inCrisis(world, me.id, other.id),
@@ -1742,6 +1749,7 @@ export class Hud {
       this.ensureMacroCards();
       this.mountTopFlag();
       this.el.topNation.textContent = me.name;
+      syncPartyTint(me);
       // Savaş durumu künyedeki tek renkli öğe; gerisi soluk kalır. Ayraç
       // elmas: orta nokta tarihî künyede fazla "web" duruyordu.
       const state = wars
@@ -1752,12 +1760,15 @@ export class Hud {
       // sürerken sayaç Faz E'ye dek üretim anındaki değeri gösterir.
       const provinceCount = me.provinces || null;
       this.el.topSub.innerHTML =
-        `${provinceCount ? `${provinceCount} ${provinceCount === 1 ? 'state' : 'states'}`
+        // Sayılar ayrı kapta: dar pencerede büyük sancağa yer açmak için gizlenir
+        // (hud.css), savaş/barış durumu her genişlikte kalır.
+        `<span class="nt-counts">${provinceCount ? `${provinceCount} ${provinceCount === 1 ? 'state' : 'states'}`
           : `${me.tiles} ${me.tiles === 1 ? 'hex' : 'hexes'}`} ${sep} `
-        + `${cities} ${cities === 1 ? 'city' : 'cities'} ${sep} ${state}`;
+        + `${cities} ${cities === 1 ? 'city' : 'cities'} ${sep}</span> ${state}`;
     } else {
       this.el.macroStats.innerHTML = '';
       this.el.topNation.textContent = '—';
+      syncPartyTint(null);
       this.el.topSub.textContent = 'eliminated';
     }
     // Kutu seçimi ve kontrol grubu kare SEÇMEZ (game.finishMarquee): ordu
@@ -1915,7 +1926,13 @@ export class Hud {
     const host = this.el.topFlag;
     if (!me || !host) return;
     const box = localRect(host);
-    mountFlag(host, me, Math.round(box.width) || 60, Math.round(box.height) || 40);
+    const world = this.game.world;
+    // Savaştaysak sancak savaş biçimindedir (hilal ters, simgenin ardında kılıç).
+    this.topFlagWar = world.nations.some((o) => o.alive && o.id !== me.id && atWar(world, me.id, o.id));
+    // Sancak kipinde: bez çerçevede kırpılmaz, gönderden serbest dalgalanır ve saçağı,
+    // sarkması kabın dışına taşar (Kerem: "sol üstteki bayrak epey büyük olsun ve
+    // özgürce dalgalansın"). Kabın ölçüsü bezin ölçüsüdür, CSS kırılımları belirler.
+    mountFlag(host, me, Math.round(box.width) || 120, Math.round(box.height) || 80, 'banner', { war: this.topFlagWar });
   }
 
   /**

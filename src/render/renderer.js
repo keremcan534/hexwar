@@ -18,6 +18,10 @@ import { battleView } from '../game/battleView.js';
 import { WaterLayer } from './water.js';
 import { SeaLayer } from './seaLayer.js';
 import { MiniLayer } from './miniatures.js';
+import {
+  brassSymbol, drawInlay, drawNatoInlay, loadUnitSkin, paintBars, paintFlagChip, paintLabel, paintPlaque,
+  paintStackTab, unitSkinStamp,
+} from './unitSkin.js';
 import { zoneStatus } from '../game/navy.js';
 import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
@@ -368,40 +372,6 @@ function drawOrderBadge(ctx, order, x, y, size) {
 }
 
 /**
- * TARAF RENGI — "bu kimin ordusu" sorusunun TEK cevabi. Ulus rengi yetmiyordu:
- * elli bes ulusun paleti birbirine yakin ve savasta iki tarafin rozetleri ayni
- * tona karisiyordu (Kerem). Varsayilan oyun zoomunda (0.287) rozet yalniz
- * bayrakti ve hicbir taraf isareti tasimiyordu. Renk ulustan bagimsiz, oyuncuya
- * gore: benim yesil, muttefik celik mavi, savastigim kizil; ucuncu taraf
- * isaretsiz. Benimki PIRINC OLAMAZ: kunyelerin kendisi pirinc, altin hale
- * her rozette varmis gibi okunuyordu. Saldiri ucgenleri de ayni renkleri
- * kullanir.
- */
-// 2026-10-14 (Kerem: "paintten çizilmiş gibi"): neon tonlar (#63c77a...) koyu
-// haritada çıkartma gibi duruyordu; ton aynı aile, doygunluk ve parlaklık kısık.
-const SIDE_COLOR = { own: '#6fae62', ally: '#6a9acb', hostile: '#cf4d3a' };
-/**
- * TARAF GÖVDEDE: çerçeve tek başına yetmedi (Kerem: "dost mu düşman mı tam
- * ayırt edilemiyor"). Her taraf aynı pirinç künyeyi taşıyordu; fark 2 px'lik
- * yeşil/kırmızı hattaydı ve kırmızı-yeşil renk körlüğünde ikisi künyenin kendi
- * rengine karışıyordu (Machado benzetimi, deutan ΔE 22). Künye artık tarafın
- * tonuna boyanır ('color' karışımı: pirincin ışığı/dokusu kalır, tonu taraftan
- * gelir); üçüncü taraf solar. Düşmanın künyesi ayrıca KÖŞESİ KESİK çizilir:
- * renk görmeyen göz de biçimden ayırsın.
- */
-const SIDE_TINT = {
-  own: 'rgba(72, 168, 92, 0.72)',
-  ally: 'rgba(82, 138, 210, 0.72)',
-  hostile: 'rgba(214, 58, 40, 0.80)',
-};
-/**
- * Boyanan yalnız künyenin İÇ ALANI (lacivert zemin): bütün plaka 'color' ile
- * boyanınca pirinç çerçeve de yeşile dönüyor, sayaç düz yeşil bir kutu gibi
- * okunuyordu (Kerem: "paintten çizilmiş"). Çerçeve pirinç kalır, taraf
- * zeminin tonundan okunur. Oranlar künye resminin çerçeve payıdır.
- */
-const PLATE_FIELD = { x: 0.1, y: 0.13, w: 0.8, h: 0.74 };
-/**
  * Sayacın ekrandaki büyüme eğrisi (px). Sayaç dünya ölçüsüyle büyüyordu:
  * zoom 1'de 40×28 px, 45×52 px'lik hexin %65'i; cephe tek parça künye duvarı
  * gibi okunuyor, şehir adlarını örtüyordu (Kerem: "counter'lar çok büyük").
@@ -413,8 +383,8 @@ const PLATE_FIELD = { x: 0.1, y: 0.13, w: 0.8, h: 0.74 };
 const COUNTER_KNEE_PX = 36;
 const COUNTER_GROWTH = 0.5;
 /**
- * Üçüncü tarafın (savaşta da müttefik de olmayan) sayacı küçük ve GRİ
- * künyelidir (SIDE_TINT yok → doygunluk söner). Saydam DEĞİL: %55 alfa
+ * Üçüncü tarafın (savaşta da müttefik de olmayan) sayacı küçük ve emayesiz,
+ * koyu deri künyelidir. Saydam DEĞİL: %55 alfa
  * denendi, oyuncu "üniteler yarım gözüküyor" diye hata sandı (Kerem).
  */
 const OTHER_COUNTER_SCALE = 0.74;
@@ -427,22 +397,20 @@ const SIDE_HALO = {
 };
 
 /**
- * Birim kunyeleri: pirinc plakalar (assets/icons/units). Sayacin ortasindaki
- * cizili NATO cercevesinin yerini aldilar — ayni sembol dili, ama arayuzun
- * geri kalaniyla (sekme kunyeleri, defter madalyonlari) ayni set.
+ * Gemi siluetleri (2026-11-20 levha sayfası assets/incoming/harita/birlik-levhalari.webp,
+ * dilimleri assets/icons/map-plates). Sayaçta yalnız siluet kullanılır, emayeye gömülü
+ * pirinç olarak (unitSkin.brassSymbol). Kara kollarının levhaları artık okunmaz: ince NATO
+ * çizgileri 40 px'lik sayaçta soluyordu, simge tel olarak çizilir (unitSkin.drawNatoInlay).
  *
- * Yukleme ASENKRON, sprite pisirme SENKRON: goruntu hazir degilse sayac eski
- * cizimle piser ve resim gelince onbellek bosaltilir. Boylece ilk kare
- * bosluk beklemez, sonraki kareler kunyeyi alir.
+ * Yukleme ASENKRON, sprite pisirme SENKRON: goruntu hazir degilse sayac tel simgeyle
+ * piser ve resim gelince onbellek bosaltilir.
  */
 const UNIT_PLATE_FILES = {
-  // 2026-11-20 levha sayfası (assets/incoming/harita/birlik-levhalari.webp); hava kolu eski künye.
-  INFANTRY: 'map-plates/infantry.webp', CAVALRY: 'map-plates/cavalry.webp', ARTILLERY: 'map-plates/artillery.webp',
-  WARSHIP: 'map-plates/warship.webp', ARMOR: 'map-plates/armor.webp', SUBMARINE: 'map-plates/submarine.webp',
-  AIRCRAFT: 'units/aircraft.png',
+  WARSHIP: 'map-plates/warship.webp', SUBMARINE: 'map-plates/submarine.webp',
 };
 const unitPlates = new Map();
 let unitPlatesPending = 0;
+const NAVAL_PLATE = new Set(Object.keys(UNIT_PLATE_FILES));
 
 function loadUnitPlates(onReady) {
   if (unitPlates.size || unitPlatesPending) return;
@@ -544,65 +512,6 @@ function stripAlong(ctx, pts, img, width, length = Infinity) {
   }
 }
 
-/** Sayaç tip kısaltmaları (bkz. paintCounterSprite). */
-const TYPE_CODE = {
-  INFANTRY: 'INF', CAVALRY: 'CAV', ARTILLERY: 'ART', WARSHIP: 'NAV',
-  ARMOR: 'ARM', AIRCRAFT: 'AIR',
-};
-
-/**
- * NATO harita sembolleri: piyade çapraz, süvari elips, topçu nokta.
- * Harf yerine bunlar kullanılıyor — dilden bağımsız ve uzaktan okunur.
- */
-function natoSymbol(path, typeId, cx, cy, r) {
-  const w = r * 0.78;
-  const h = r * 0.52;
-  switch (typeId) {
-    case 'INFANTRY':
-      path.moveTo(cx - w, cy - h);
-      path.lineTo(cx + w, cy + h);
-      path.moveTo(cx + w, cy - h);
-      path.lineTo(cx - w, cy + h);
-      break;
-    case 'CAVALRY':
-      path.ellipse(cx, cy, w, h, 0, 0, Math.PI * 2);
-      break;
-    case 'ARTILLERY':
-      // Topçu simgesi tek dolu nokta: NATO'da ateş desteğinin karşılığı.
-      path.ellipse(cx, cy, h * 0.55, h * 0.55, 0, 0, Math.PI * 2);
-      break;
-    case 'WARSHIP':
-      // Gövdenin kendisi zaten okunuyor; sadece direk eklenir.
-      path.moveTo(cx - r * 0.15, cy + h * 0.3);
-      path.lineTo(cx - r * 0.15, cy - h * 1.5);
-      break;
-    case 'ARMOR': {
-      // Palet: yatay hap biçimi (NATO zırhlısı).
-      const pw = w * 0.85;
-      const ph = h * 0.55;
-      path.moveTo(cx - pw + ph, cy - ph);
-      path.lineTo(cx + pw - ph, cy - ph);
-      path.arc(cx + pw - ph, cy, ph, -Math.PI / 2, Math.PI / 2);
-      path.lineTo(cx - pw + ph, cy + ph);
-      path.arc(cx - pw + ph, cy, ph, Math.PI / 2, Math.PI * 1.5);
-      break;
-    }
-    case 'AIRCRAFT':
-      // Pervane: merkezde buluşan iki üçgen (NATO hava).
-      path.moveTo(cx, cy);
-      path.lineTo(cx - w, cy - h * 0.7);
-      path.lineTo(cx - w, cy + h * 0.7);
-      path.closePath();
-      path.moveTo(cx, cy);
-      path.lineTo(cx + w, cy - h * 0.7);
-      path.lineTo(cx + w, cy + h * 0.7);
-      path.closePath();
-      break;
-    default:
-      path.ellipse(cx, cy, w * 0.5, h * 0.5, 0, 0, Math.PI * 2);
-  }
-}
-
 /**
  * Stil kalemi: [{w, color, dash?, cap?}] sırayla çizilir. Kalınlık ve kesik
  * ekran pikselinde verilir, burada dünyaya çevrilir: zoom değişse de çizgi
@@ -630,19 +539,6 @@ function appendPts(path, pts, closed, dx = 0, reverse = false) {
     else path.lineTo(pts[i * 2] + dx, pts[i * 2 + 1]);
   }
   if (closed) path.closePath();
-}
-
-/** Köşeleri 45° kesik dikdörtgen: düşman sayacının biçim işareti. */
-function chamferRectPath(path, x, y, width, height, cut) {
-  const c = Math.min(cut, width / 2, height / 2);
-  path.moveTo(x + c, y);
-  path.lineTo(x + width, y);
-  path.lineTo(x + width, y + height - c);
-  path.lineTo(x + width - c, y + height);
-  path.lineTo(x, y + height);
-  path.lineTo(x, y + c);
-  path.closePath();
-  return path;
 }
 
 function roundedRectPath(path, x, y, width, height, radius) {
@@ -729,6 +625,11 @@ export class Renderer {
     // ve bir kare istenir, yoksa plakalar ilk zoom degisimine kadar cikmaz.
     loadUnitPlates(() => {
       this.unitSprites?.clear();
+      this.invalidateCache();
+      this.onPlatesReady?.();
+    });
+    // Künyenin emaye ve pirinç dokuları (unitSkin.js): gelince sayaç ve levhalar yeniden pişer.
+    loadUnitSkin(() => {
       this.invalidateCache();
       this.onPlatesReady?.();
     });
@@ -1380,6 +1281,9 @@ export class Renderer {
     // kampanyada uzak zoomdaki her ordu önceki dünyanın aynı id'li ulusunun
     // bayrağını taşıyordu (ölçüldü: 109 sprite'ın 94'ü yanlış ulus).
     this.flagSprites?.clear();
+    // Uzak rozet ve figür levhası da bayrağı taşır (aynı nedenle).
+    this.farBadges?.clear();
+    this.minis?.dropPlates();
     this.dirtyTiles?.clear();
     // Ülke biçimleri değişmiş olabilir: etiket yerleşimi yeniden kurulsun.
     this.labelsDirty = true;
@@ -5225,7 +5129,12 @@ export class Renderer {
     }
   }
 
-  /** Birimin oyuncuya göre tarafı (bkz. SIDE_COLOR). Ültimatomdaki düşman da düşmandır. */
+  /**
+   * Birimin oyuncuya göre tarafı; Ültimatomdaki düşman da düşmandır. "Bu kimin ordusu"nun
+   * cevabı ulus rengi değil taraftır (elli ulusun paleti birbirine yakın, Kerem): künyenin
+   * emayesi benim yeşil, müttefik çelik mavi, savaştığım kızıl, üçüncü taraf koyu deri
+   * (unitSkin.js). Düşman ayrıca köşesi kesik çizilir: renk görmeyen göz biçimden ayırsın.
+   */
   sideOf(world, nationId, playerNation) {
     if (playerNation == null || playerNation < 0 || !world) return 'other';
     if (nationId === playerNation) return 'own';
@@ -5352,35 +5261,11 @@ export class Renderer {
       // BAYRAGIDIR; renk seridi yalnizca paletten hatirlayabilene calisiyordu.
       // Bayrak ulus basina bir kez pisip blit edilir (bkz. flagSprite).
       if (zoom < 0.34) {
-        const off = 1.5 / zoom;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-        ctx.fillRect(left + off * 0.4, top + off, width, height);
-        // Uzakta sayaç yalnız bayraktır: kendi ve müttefik bayrağı çerçevesiz
-        // (bayrak kimdir'i söyler; yeşil çerçeve yakın zoomdaki gibi fazlaydı).
-        // Yalnız düşman kızıl çerçeve taşır: uzaktan cepheyi okutan o.
-        const edge = side === 'hostile' ? SIDE_COLOR.hostile : null;
-        if (edge) {
-          // Taraf cercevesi bayragin DISINA tasar: bayrak kimligini yemez.
-          const pad = 1.8 / zoom;
-          ctx.fillStyle = edge;
-          ctx.fillRect(left - pad, top - pad, width + pad * 2, height + pad * 2);
-        }
-        const flag = this.flagSprite(nation, width, height);
-        if (flag) ctx.drawImage(flag, left, top, width, height);
-        else {
-          ctx.fillStyle = '#131a20';
-          ctx.fillRect(left, top, width, height);
-          ctx.fillStyle = this.nationBand(nation);
-          ctx.fillRect(left, top, width, height * 0.3);
-        }
-        // Muharebe artik rozeti KIZARTMAZ: kizil cerceve dusmanin rengi oldu
-        // ve iki tarafin da ayni hatla cizilmesi karisikligin kendisiydi.
-        // Muharebeyi drawBattles nisani ve saldiri ucgenleri gosterir.
-        if (!edge) {
-          ctx.strokeStyle = 'rgba(6, 10, 12, 0.75)';
-          ctx.lineWidth = 1 / zoom;
-          ctx.strokeRect(left, top, width, height);
-        }
+        // Uzakta sayaç yalnız bayraktır; kendi ve müttefik bayrağı ince pirinç çerçeveli,
+        // yalnız düşman kızıl emaye çerçeve taşır (uzaktan cepheyi okutan o). Rozet gölgesi
+        // ve çerçevesiyle birlikte pişer: karede tek drawImage (bkz. farBadge).
+        const badge = this.farBadge(nation, side, width, height);
+        ctx.drawImage(badge.canvas, left - badge.pad, top - badge.pad, width + badge.pad * 2, height + badge.pad * 2);
         continue;
       }
 
@@ -5474,6 +5359,74 @@ export class Renderer {
     return canvas;
   }
 
+  /**
+   * Uzak zoom rozeti: bayrak, çerçeve ve temas gölgesi tek sprite. Eskiden her karede üç ayrı
+   * dikdörtgen basılıyordu (kaydırılmış koyu blok, düz kırmızı kutu, bayrak) ve rozet haritaya
+   * yapıştırılmış bir çıkartma gibi duruyordu. Çerçeve künyenin malzemesidir: kendi/müttefik
+   * ince pirinç, düşman kızıl emaye (pirinç kıl payıyla). Ulus + taraf + ölçek kovası başına pişer.
+   */
+  farBadge(nation, side, width, height) {
+    const bucket = Math.max(-6, Math.min(10,
+      Math.round(Math.log(this.camera.zoom * this.dpr) / Math.log(1.25))));
+    const hostile = side === 'hostile';
+    const key = `${nation.id}|${hostile ? 1 : 0}|${bucket}|${Math.round(width)}x${Math.round(height)}`;
+    this.farBadges ??= new Map();
+    let badge = this.farBadges.get(key);
+    if (badge) return badge;
+    const scale = Math.pow(1.25, bucket);
+    const px = 1 / scale;
+    const pad = Math.max(4 * px, height * 0.32);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(2, Math.ceil((width + pad * 2) * scale));
+    canvas.height = Math.max(2, Math.ceil((height + pad * 2) * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.scale(canvas.width / (width + pad * 2), canvas.height / (height + pad * 2));
+    ctx.translate(pad, pad);
+    // Düşman çerçevesi bayrağın DIŞINA taşar: bayrak kimliğini yemez.
+    const ring = hostile ? Math.max(2.3 * px, height * 0.21) : Math.max(1 * px, height * 0.075);
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = 2.4;
+    ctx.shadowOffsetY = 1.1;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(-ring, -ring, width + ring * 2, height + ring * 2);
+    ctx.restore();
+    const frame = ctx.createLinearGradient(0, -ring, 0, height + ring);
+    if (hostile) {
+      frame.addColorStop(0, '#e05a3e');
+      frame.addColorStop(0.55, '#c23a26');
+      frame.addColorStop(1, '#8c2416');
+    } else {
+      frame.addColorStop(0, '#f2d894');
+      frame.addColorStop(0.5, '#c39646');
+      frame.addColorStop(1, '#7d5a26');
+    }
+    ctx.fillStyle = frame;
+    ctx.fillRect(-ring, -ring, width + ring * 2, height + ring * 2);
+    if (hostile) {
+      // Emayeyi tutan pirinç kıl payı: düz kırmızı kutu değil, çerçevelenmiş levha.
+      ctx.lineWidth = px * 0.9;
+      ctx.strokeStyle = 'rgba(226, 190, 118, 0.55)';
+      ctx.strokeRect(-ring + px * 0.45, -ring + px * 0.45, width + ring * 2 - px * 0.9, height + ring * 2 - px * 0.9);
+    }
+    const flag = this.flagSprite(nation, width, height);
+    if (flag) ctx.drawImage(flag, 0, 0, width, height);
+    else {
+      ctx.fillStyle = '#131a20';
+      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = this.nationBand(nation);
+      ctx.fillRect(0, 0, width, height * 0.3);
+    }
+    ctx.lineWidth = px * 0.8;
+    ctx.strokeStyle = 'rgba(10, 6, 2, 0.7)';
+    ctx.strokeRect(px * 0.4, px * 0.4, width - px * 0.8, height - px * 0.8);
+    badge = { canvas, pad };
+    if (this.farBadges.size > 600) this.farBadges.clear();
+    this.farBadges.set(key, badge);
+    return badge;
+  }
+
   /** Sayaç sprite önbelleği; anahtar görsel durumun tamamını taşır. */
   unitSprite(unit, nation, stackLen, selected, side = null, zoomEff = this.camera.zoom) {
     // Zoom kovası: sprite 1.25 adımlı ölçek basamağında pişer, ara zoomlarda
@@ -5492,7 +5445,7 @@ export class Renderer {
     const allegiance = side ?? this.sideOf(this.viewWorld, unit.nationId, this.playerNationId);
     const key = `${bucket}|${nation.id}|${unit.type.id}|${soldiers}|${strengthQ}|${orgQ}|`
       + `${unit.battleId ? 1 : 0}|${selected ? 1 : 0}|${stackLen}|${unit.order?.type ?? ''}|`
-      + `${unitPlates.size}|${allegiance}`;
+      + `${unitPlates.size}|${allegiance}|${unitSkinStamp()}`;
     this.unitSprites ??= new Map();
     let sprite = this.unitSprites.get(key);
     if (sprite) return sprite;
@@ -5520,11 +5473,21 @@ export class Renderer {
     return sprite;
   }
 
-  /** Sayacın kendisini (0,0) çapasına pişirir; drawUnitCounters blit eder. */
+  /**
+   * Sayacın kendisini (0,0) çapasına pişirir; drawUnitCounters blit eder.
+   *
+   * KÜNYE ARAYÜZÜN MALZEMESİDİR (2026-11-23, Kerem: "dandik", "düşük kaliteli png"): gövde
+   * tarafın emayesi, çerçeve pirinç (assets/ui/skin, unitSkin.js), kol simgesi emayeye gömülü
+   * pirinç. Eskiden siyah zeminli levha resmi basılıyor, taraf pirinç simgeyi 'color'
+   * karışımıyla düz yeşil/kırmızı çizgiye boyuyor, sayı ve çubuklar simgenin çizgilerinin
+   * üstüne biniyordu. Şimdi üç bölge ayrı: üstte bayrak + mevcut, ortada simge, altta yuva.
+   * Taraf gövdeden okunur (yeşil/mavi/kırmızı emaye, üçüncü taraf koyu deri); düşman
+   * ayrıca köşesi kesik kalır.
+   */
   paintCounterSprite(scale, spec) {
     const width = HEX_SIZE * 1.56;
     const height = HEX_SIZE * 1.08;
-    // Pay gölgeyi, yığın rozetini ve çerçeve taşmalarını kapsar.
+    // Pay gölgeyi, yığın etiketini ve çerçeve taşmalarını kapsar.
     const margin = HEX_SIZE * 0.34;
     const w = width + margin * 2;
     const h = height + margin * 2;
@@ -5532,225 +5495,70 @@ export class Renderer {
     canvas.width = Math.max(1, Math.ceil(w * scale));
     canvas.height = Math.max(1, Math.ceil(h * scale));
     const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
     ctx.scale(scale, scale);
     ctx.translate(margin, margin);
     // Çizgi kalınlıkları ekranda sabit kalsın: kovanın temsil ettiği zoom.
     const zoom = Math.max(0.2, scale / this.dpr);
-    const left = 0;
-    const top = 0;
-    const x = width / 2;
-    const detailed = zoom > 0.46;
-    const off = 1.5 / zoom;
+    // Bir AYGIT pikseli (dünya biriminde): saç çizgisi bundan incelmez.
+    const px = 1 / scale;
+    // Mevcut yazısı ancak sayaç ~30 px'i geçince okunur; altında yazı yeri boş kalır, bayrak
+    // ile simge yan yana büyür (zoom 0.6'da üç katman üst üste bulamaç gibi okunuyordu).
+    const detailed = zoom > 0.75;
     const { nation, strength, organization } = spec;
+    const side = spec.allegiance ?? 'other';
+    const rim = Math.max(1.3 * px, height * 0.075);
+    paintPlaque(ctx, {
+      x: 0, y: 0, w: width, h: height, side, selected: spec.selected, rim, cut: height * 0.24, px,
+    });
 
-    const radius = Math.max(1.5 / zoom, HEX_SIZE * 0.1);
-    const hostileShape = spec.allegiance === 'hostile';
-    // Düşmanın künyesi köşesi kesik (sol üst + sağ alt): renk görmeyen göz için.
-    const cut = height * 0.24;
-    const outer = hostileShape
-      ? chamferRectPath(new Path2D(), left, top, width, height, cut)
-      : roundedRectPath(new Path2D(), left, top, width, height, radius);
+    // Bayrak "kimin ordusu"nu, emaye "hangi taraf"ı söyler; ikisi aynı yerde yarışmaz.
+    const fh = height * (detailed ? 0.22 : 0.3);
+    const fw = fh * 1.5;
+    const fx = rim + height * (spec.allegiance === 'hostile' ? (detailed ? 0.2 : 0.12) : 0.07);
+    const fy = detailed ? rim + height * 0.06 : height * 0.4 - fh / 2;
+    const flag = this.flagSprite(nation, fw, fh);
+    if (flag) paintFlagChip(ctx, flag, fx, fy, fw, fh, px);
 
-    // Gölge sprite'a BİR KEZ pişer (kare başına maliyet yok): yumuşak, aşağı
-    // düşen gölge sayacı haritanın üstünde duran bir taş gibi oturtur. Eski
-    // kaydırılmış koyu blok çıkartma gibi okunuyordu.
-    ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-    ctx.shadowBlur = 5 * scale / this.dpr / zoom;
-    ctx.shadowOffsetY = 2.2 / zoom * scale / this.dpr;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-    ctx.fill(outer);
-    ctx.restore();
-
-    // KIMIN ORDUSU — artık YALNIZ GÖVDEDEN (SIDE_TINT). Plakanın dışına taşan
-    // hale ve taraf renkli kontur kalktı: gövde zaten tarafın tonunu taşıyor,
-    // çevresindeki yeşil hat aynı bilgiyi ikinci kez söylüyordu (Kerem
-    // 2026-11-15: "hâlâ etrafında yeşil bir çizgi var, zaten kendi renginden
-    // anlaşılıyor"). Düşman ayrıca köşesi kesik kalır (renk görmeyen göz için).
-    const halo = null;
-    if (halo) {
-      const pad = Math.max(1.8 / zoom, height * (spec.allegiance === 'hostile' ? 0.095 : 0.08));
-      ctx.fillStyle = halo;
-      ctx.fill(hostileShape
-        ? chamferRectPath(new Path2D(), left - pad, top - pad, width + pad * 2, height + pad * 2, cut + pad * 0.6)
-        : roundedRectPath(new Path2D(),
-          left - pad, top - pad, width + pad * 2, height + pad * 2,
-          radius + pad * 0.6));
-    }
-    // SAYACIN GOVDESI KUNYENIN KENDISIDIR. Once kunye sayacin icine kucuk bir
-    // rozet olarak konmustu; o zaman ekranda iki cerceve ust uste biniyordu ve
-    // pirinc plaka koyu bir kutunun icinde kayboluyordu. Kunye artik ayaki
-    // izini tamamen kaplar; koyu plaka yalniz resim yuklenmediginde cizilir.
-    const plateArt = unitPlates.get(spec.typeId);
-    if (plateArt) {
-      ctx.save();
-      ctx.clip(outer);
-      ctx.drawImage(plateArt, left, top, width, height);
-      // Taraf künyenin GÖVDESİNDE (bkz. SIDE_TINT): 'color' karışımı pirincin
-      // ışığını ve dokusunu tutar, tonu taraftan alır. Üçüncü taraf solar.
-      const tint = SIDE_TINT[spec.allegiance];
-      ctx.globalCompositeOperation = tint ? 'color' : 'saturation';
-      ctx.fillStyle = tint ?? 'rgba(128, 128, 128, 0.78)';
-      if (tint) {
-        ctx.fillRect(left + width * PLATE_FIELD.x, top + height * PLATE_FIELD.y,
-          width * PLATE_FIELD.w, height * PLATE_FIELD.h);
-      } else ctx.fillRect(left, top, width, height);
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.restore();
-    } else {
-      if (detailed) {
-        const plate = ctx.createLinearGradient(left, top, left, top + height);
-        plate.addColorStop(0, '#1a2228');
-        plate.addColorStop(1, '#0e1417');
-        ctx.fillStyle = plate;
-      } else ctx.fillStyle = '#141b20';
-      ctx.fill(outer);
-    }
-    // Cerceve ulke renginden alinmaz: doygun uluslarda neon turkuaz bir
-    // kutuya donuyordu. Secili birim pirinc, muharebedeki tugla kirmizisi,
-    // gerisi mat kirik beyaz.
-    // Cerceve kalinligi ve rengi TEK bir soruyu cevaplar: bu kim?
-    //   secili  — parlak pirinc, kalin
-    //   benim   — fildisi-pirinc, orta
-    //   dusman  — tugla kirmizisi, kalin
-    //   ucuncu  — soluk, ince
-    // Kontur taraf söylemez (gövde söyler): seçili birim parlak pirinç,
-    // gerisi plakayı haritadan ayıran ince koyu kenar.
-    if (spec.selected) {
-      // Seçili sayaç kendi kenarında parlar: dışarıda ayrı bir kare yok.
-      ctx.save();
-      ctx.shadowColor = 'rgba(255, 226, 150, 0.95)';
-      ctx.shadowBlur = 9 * scale;
-      ctx.lineWidth = 3 / zoom;
-      ctx.strokeStyle = '#ffe9b0';
-      ctx.stroke(outer);
-      ctx.restore();
-    } else {
-      ctx.lineWidth = 1.1 / zoom;
-      ctx.strokeStyle = 'rgba(6, 9, 11, 0.85)';
-      ctx.stroke(outer);
-    }
-
-    // Ulke rengi yalniz ust kimlik seridinde: counter haritaya karismaz.
-    ctx.save();
-    ctx.clip(outer);
-    // Kimlik şeridi ülkenin haritadaki mineral tonunu kullanır; ham palet
-    // rengi kartı dijital bir rozete çeviriyordu.
-    // Kimlik seridi kunyenin ustunde ince bir bant: kalin bant plakanin
-    // pirinc cercevesini yiyordu, ama serit olmadan "kimin ordusu" gitmis olur.
-    // Künye varken kimlik BAYRAKTIR (sol üst köşede küçük çip): üstteki renk
-    // bandı pirinç çerçeveyi kesiyor, elli ulusun yakın tonları da ayırmıyordu.
-    const flagChip = plateArt && detailed ? this.flagSprite(nation, height * 0.36, height * 0.24) : null;
-    if (!flagChip) {
-      const bandHeight = plateArt ? height * 0.15 : height * 0.25;
-      ctx.fillStyle = this.nationBand(nation);
-      ctx.fillRect(left, top, width, bandHeight);
-      ctx.fillStyle = 'rgba(226, 214, 186, 0.14)';
-      ctx.fillRect(left, top, width, Math.max(0.8 / zoom, height * 0.045));
-    }
-    // İç gölge: plaka gömülü dursun.
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
-    ctx.lineWidth = 2 / zoom;
-    ctx.stroke(outer);
-    ctx.restore();
-    if (flagChip) {
-      const fw = height * 0.36;
-      const fh = height * 0.24;
-      const fx = left + width * 0.07;
-      const fy = top + height * 0.08;
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.fillRect(fx - 0.8 / zoom, fy - 0.8 / zoom, fw + 1.6 / zoom, fh + 1.6 / zoom);
-      ctx.drawImage(flagChip, fx, fy, fw, fh);
-    }
-
-    // Yığın rozeti sağ üst köşeye oturur (bkz. aşağıda). Yığında mevcut
-    // rozetin SOLUNA yaslanır: aynı hizada kalınca rozet sayının sonunu
-    // örtüyor, "30K" yakın zoomda "3(" okunuyordu.
-    const badgeWidth = HEX_SIZE * 0.48;
-    const countRight = spec.stackLen > 1
-      ? left + width - badgeWidth * 0.75 - width * 0.03
-      : left + width * 0.92;
+    // Yığın etiketi sağ üst köşeye çakılı; mevcut onun SOLUNA yaslanır.
+    const tabH = height * 0.36;
+    const tabW = tabH * 1.05;
+    const tabX = width - tabW * 0.72;
+    const tabY = -tabH * 0.3;
     if (detailed) {
-      ctx.font = `800 ${Math.round(HEX_SIZE * 0.2)}px ${FONT_UI}`;
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'right';
-      if (plateArt) {
-        // Kunye tur bilgisini SEMBOLLE veriyor; 'INF' yazisi ayni seyi ikinci
-        // kez soyluyordu. Geriye yalniz mevcut kalir ve okunsun diye koyu
-        // golgeyle basilir — pirinc zemin acik.
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-        ctx.fillText(spec.soldiers, countRight + width * 0.01, top + height * 0.115);
-        ctx.fillStyle = '#f0e2bd';
-        ctx.fillText(spec.soldiers, countRight, top + height * 0.1);
-      } else {
-        ctx.fillStyle = '#081017';
-        ctx.textAlign = 'left';
-        ctx.fillText(TYPE_CODE[spec.typeId] ?? 'DIV', left + width * 0.08, top + height * 0.135);
-        ctx.textAlign = 'right';
-        ctx.fillText(spec.soldiers, countRight, top + height * 0.135);
-
-        const symbolWidth = width * 0.58;
-        const symbolHeight = height * 0.38;
-        const symbolY = top + height * 0.48;
-        ctx.lineWidth = 1.15 / zoom;
-        ctx.strokeStyle = 'rgba(214, 200, 168, 0.8)';
-        ctx.strokeRect(x - symbolWidth / 2, symbolY - symbolHeight / 2, symbolWidth, symbolHeight);
-        const symbol = new Path2D();
-        natoSymbol(symbol, spec.typeId, x, symbolY, height * 0.2);
-        ctx.lineWidth = Math.max(1.15 / zoom, height * 0.055);
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = '#d9d1bd';
-        ctx.stroke(symbol);
-      }
+      const right = spec.stackLen > 1 ? tabX - height * 0.06 : width - rim - height * 0.08;
+      paintLabel(ctx, spec.soldiers, right, fy + fh / 2 + px * 0.3,
+        `800 ${(height * 0.25).toFixed(2)}px ${FONT_UI}`, px);
     }
 
-    // STR ve ORG iki ayri durum cubugudur; her zaman gorunur.
-    const barLeft = left + width * 0.07;
-    const barWidth = width * 0.86;
-    const barHeight = Math.max(1.35 / zoom, height * 0.065);
-    const strengthY = top + height * 0.77;
-    const organizationY = top + height * 0.89;
-    ctx.fillStyle = '#05090c';
-    ctx.fillRect(barLeft, strengthY, barWidth, barHeight);
-    ctx.fillRect(barLeft, organizationY, barWidth, barHeight);
-    ctx.fillStyle = strength > 0.5 ? '#839a6b' : strength > 0.25 ? '#b78e48' : '#a95e4a';
-    ctx.fillRect(barLeft, strengthY, barWidth * strength, barHeight);
-    ctx.fillStyle = organization > 0.35 ? '#7e8d92' : organization > 0.15 ? '#b78e48' : '#a95e4a';
-    ctx.fillRect(barLeft, organizationY, barWidth * organization, barHeight);
+    // Kol simgesi emayeye gömülü pirinç: kara kolu tel NATO simgesi (unitSkin.drawNatoInlay),
+    // gemiler levha resminin dolu silueti (ince tel yok, küçülünce de okunur).
+    // Simge sayacın asıl bilgisidir (Kerem: "30K'da ünite simgesi minnacık"): ayrıntılı
+    // kademede de üst satırla çubuk yuvası arasındaki bütün boyu alır.
+    const symH = height * (detailed ? 0.37 : 0.42);
+    const symY = height * (detailed ? 0.555 : 0.4);
+    const symX = detailed ? width / 2 : width * 0.62;
+    const symbol = NAVAL_PLATE.has(spec.typeId) ? brassSymbol(unitPlates.get(spec.typeId), spec.typeId) : null;
+    if (symbol) drawInlay(ctx, symbol, symX, symY, symH * 1.2, px);
+    // Pirinç tel yalnız yakın zoomda okunur; altında simge kalın fildişidir.
+    else drawNatoInlay(ctx, spec.typeId, symX, symY, symH, px, { bold: zoom < 1.5 });
 
-    if (spec.stackLen > 1) {
-      const badge = roundedRectPath(
-        new Path2D(), left + width - badgeWidth * 0.75, top - badgeWidth * 0.25,
-        badgeWidth, badgeWidth, badgeWidth * 0.22,
-      );
-      ctx.fillStyle = '#0b1117';
-      ctx.fill(badge);
-      ctx.lineWidth = 1.4 / zoom;
-      ctx.strokeStyle = '#e5ca84';
-      ctx.stroke(badge);
-      ctx.font = `800 ${Math.round(HEX_SIZE * 0.22)}px ${FONT_UI}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#f2e4b9';
-      ctx.fillText(String(spec.stackLen), left + width - badgeWidth * 0.25, top + badgeWidth * 0.25);
-    }
+    // STR ve ORG iki ayrı durum çubuğudur; her zaman görünür.
+    const barH = Math.max((detailed ? 1.2 : 1) * px, height * (detailed ? 0.058 : 0.05));
+    const gap = Math.max((detailed ? 0.8 : 0.6) * px, height * 0.02);
+    const barLeft = rim + height * 0.12;
+    const barWidth = width - 2 * barLeft;
+    const barTop = height - rim - barH * 2 - gap - Math.max(px * 0.8, barH * 0.35) - height * 0.03;
+    paintBars(ctx, barLeft, barTop, barWidth, barH, gap, strength, organization, px);
 
     if (spec.order && detailed) {
-      ctx.font = `800 ${Math.round(HEX_SIZE * 0.23)}px ${FONT_UI}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#f7e7b3';
-      drawOrderBadge(ctx, spec.order, left + width * 0.1, top + height * 0.58, height * 0.34);
+      ctx.fillStyle = '#f2dfae';
+      drawOrderBadge(ctx, spec.order, rim + height * 0.2, symY, height * 0.26);
     }
 
-    if (spec.selected) {
-      ctx.lineWidth = 1.15 / zoom;
-      ctx.strokeStyle = '#ffffff';
-      const inner = roundedRectPath(
-        new Path2D(), left + 2 / zoom, top + 2 / zoom,
-        width - 4 / zoom, height - 4 / zoom, radius * 0.7,
-      );
-      ctx.stroke(inner);
+    if (spec.stackLen > 1) {
+      paintStackTab(ctx, tabX, tabY, tabW, tabH, spec.stackLen,
+        `800 ${(tabH * 0.66).toFixed(2)}px ${FONT_UI}`, px);
     }
     return { canvas, margin, w, h };
   }

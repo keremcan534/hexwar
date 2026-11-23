@@ -11,8 +11,39 @@ import { runUnitAI } from './ai.js';
 import { clearDirective } from './movement.js';
 import { isMoving } from './units.js';
 import { POLICY_AREAS, POLICY_ORDER } from './policyDefs.js';
+import { ensureFleets, fleetsOf, setFleetMission } from './navy.js';
 
 export const ORDER = { AUTO: 'auto', HOLD: 'hold' };
+
+/**
+ * FİLO EMRİ — birimin AUTO/HOLD'unun donanmadaki karşılığı (navy.js FİLOLAR).
+ * AUTO filoyu amiralliğe bırakır (YZ'nin kuralının ta kendisi), SEA bütün
+ * hazır gemilerini bir denize yollar ve orada tutar, PORT limanda yedek
+ * bekletir. Ev ödevi testi: emir filo başınadır, gemi başına değil; varsayılan
+ * tek filo Auto'dadır, on filo da tek fleetsToAuto ile devredilir.
+ */
+export const FLEET_ORDER = { AUTO: 'auto', SEA: 'sea', PORT: 'port' };
+
+/**
+ * Filoya emir. Kimlik 0, filo listesi henüz kurulmamış ulusun sanal "Home
+ * Fleet"idir: ilk emir listeyi kurar. Döner: emri alan filonun kimliği ya da null.
+ */
+export function setFleetOrder(nation, fleetId, mode, zoneId = null) {
+  if (!nation || !Object.values(FLEET_ORDER).includes(mode)) return null;
+  ensureFleets(nation);
+  const id = fleetId === 0 ? fleetsOf(nation)[0].id : fleetId;
+  return setFleetMission(nation, id, mode, zoneId) ? id : null;
+}
+
+/** Bütün filolar amiralliğe (Auto). Döner: emri değişen filo sayısı. */
+export function fleetsToAuto(nation) {
+  let changed = 0;
+  for (const fleet of fleetsOf(nation) ?? []) {
+    if (fleet.order?.mode === FLEET_ORDER.AUTO) continue;
+    if (setFleetMission(nation, fleet.id, FLEET_ORDER.AUTO)) changed++;
+  }
+  return changed;
+}
 
 /**
  * SÜREKLİ POLİTİKA EMRİ. Birimin AUTO/HOLD emrinin ulus düzeyindeki karşılığı:

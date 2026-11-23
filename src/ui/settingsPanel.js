@@ -20,6 +20,7 @@ import { LIVING_LAYERS, livingFlags } from '../render/living/flags.js';
 import { setUiMotion, uiMotion } from './mainMenu.js';
 import { panelOpen } from './motion.js';
 import { UI_FACTOR_MAX, UI_FACTOR_MIN, setUiScaleFactor, uiScaleFactor } from './uiScale.js';
+import { setPartyTint } from './partyTint.js';
 
 const STORE_KEY = 'hexwar:options';
 const $ = (id) => document.getElementById(id);
@@ -183,6 +184,11 @@ export class SettingsPanel {
         tip: 'The metal of buttons, frames and highlights. Warnings, map and pictures keep their colours.',
         read: () => game.theme?.accent?.() ?? 'brass',
         write: (v) => game.theme?.setAccent?.(v),
+      },
+      {
+        id: 'partyTint', tab: 'display', sec: 'Picture', label: 'Party colour', kind: 'toggle', def: true,
+        tip: 'The ruling party lends its colour to the top bar and screen headers. It changes with the government.',
+        write: (v) => setPartyTint(v, game.world?.nations?.[game.turns?.playerNation]),
       },
       {
         id: 'brightness', tab: 'display', sec: 'Picture', label: 'Brightness', kind: 'range',

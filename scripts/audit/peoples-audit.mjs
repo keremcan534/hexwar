@@ -295,7 +295,10 @@ if (PART !== 'campaign') {
   // P2 KABULÜ (redesign §6 P2; hepsi TASARIM KARARI, tohum başına basılır).
   // Kimlik izi taban P0 snapshot'ından (redesign-baseline §3.4).
   sub('P2 kabul hedefleri (tasarim karari; tohum basina)');
-  const IDENTITY = { STAT1: 'a014e387', STAT2: 'dcff3872', STAT3: '78890941', BORDER1: '44d755a5' };
+  // 2026-11-23: nationGen 2 (toparlak ülke şekli; büyüme ana zar akışından çekmez) ve cultureGen 2
+  // (etnik mozaik) adları ve renkleri BİLEREK bir kez kaydırdı; iz yeni üreteçlerden. Eski
+  // kayıtlar eski üreteçle açılır (save.js genOptions), onların kimliği değişmez.
+  const IDENTITY = { STAT1: '4f1f4f74', STAT2: '06535a9d', STAT3: 'a5309b3c', BORDER1: '1c5a0841' };
   const emp = (w, a) => w.empires[a] ?? {};
   const between = (v, lo, hi) => Number.isFinite(v) && v >= lo && v <= hi;
   const TARGETS = [
@@ -311,8 +314,12 @@ if (PART !== 'campaign') {
     ['ulus-devlet (>=%85) >= 24', (w) => w.nationStates, (v) => v >= 24],
     ['bati medyan en buyuk >= %75', (w) => w.westernMedian, (v) => v >= 0.75],
     ['tur 1 tebaa payi %30-42', (w) => w.subject, (v) => between(v, 0.30, 0.42)],
-    ['kultur 54-62', (w) => w.cultures, (v) => between(v, 54, 62)],
-    ['ulus (yuva dahil) <= 135', (w) => w.nationsTotal, (v) => v <= 135],
+    // Etnik mozaik (cultureGen 2, 2026-11-23; world/mosaic.js) 160x96'ya +5-10
+    // halk ekler, her biri uyuyan bir Özgür Devlet yuvasıyla: eski 54-62 ve 135
+    // tavanı yerine 56-72 ve 150. Hafta süresi aynı ölçüldü (STAT2, 52 hafta:
+    // 125 ulus 102 ms, 141 ulus 98 ms).
+    ['kultur 56-72', (w) => w.cultures, (v) => between(v, 56, 72)],
+    ['ulus (yuva dahil) <= 150', (w) => w.nationsTotal, (v) => v <= 150],
     ['zayif cift 0', (w) => w.weakPairs, (v) => v === 0],
     ['duzenli ulus kimligi ayni', (w) => w.identity, (v, w) => !IDENTITY[w.seed] || v === IDENTITY[w.seed]],
   ];

@@ -167,11 +167,14 @@ const revolted = world.provinces.filter((p, i) => (
 sub('TEST 1 — tek kulturlu ulus huzursuzluktan kume kaybediyor mu?');
 {
   // Kurulusta yabancisi olmayan butun uluslar: hala butun kumeleri kendi
-  // kulturunden mi, ve isyan sayaci sifir mi?
+  // kulturunden mi, ve isyan sayaci sifir mi? Yalniz KURULUS kumeleri sayilir:
+  // sonradan fethedilen yabanci kume (2026-11-23: Norengrad'dan alinan %50
+  // yabanci kume) tek halkli ulusun yurdu degildir, kapi orada acik olmalidir.
   let risky = 0;
   let peak = 0;
   for (const row of mono) {
-    const owned = world.provinces.filter((p) => p.owner === row.nation.id && p.econ);
+    const owned = world.provinces.filter((p) => p.owner === row.nation.id && p.econ
+      && ownerAt0[p.id] === row.nation.id);
     for (const province of owned) {
       const weeks = province.econ.revoltWeeks ?? 0;
       peak = Math.max(peak, weeks);

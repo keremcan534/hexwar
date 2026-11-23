@@ -10,7 +10,7 @@ import { manageAcceptance, manageBrokenProvinces } from './culture.js';
 import { manageMovements } from './movements.js';
 import { runPolicyAI } from './policies.js';
 import {
-  buildOffer, demandLimit, occupiedProvincesOf, offerCost, offerMeetsExpectation, provinceKeyOf,
+  buildOffer, landSaturated, offerCost, offerMeetsExpectation, provinceKeyOf, surrenderLand,
   signPeace, suggestWarGoal, warScore,
 } from './peace.js';
 import {
@@ -134,8 +134,10 @@ function acceptsOffer(game, receiver, proposer, offer, rng) {
 function surrenderOffer(world, nation, foe) {
   // Kaç küme bırakılacağını KAZANANIN skoru belirler: teslim olan taraf da
   // üstünlüğün satın alabileceğinden fazlasını masaya koymaz.
-  const limit = demandLimit(warScore(world, foe.id, nation.id));
-  const lost = occupiedProvincesOf(world, foe.id, nation.id).slice(0, limit);
+  // Kazananın skorunun satın aldığı toprak, kazananın kendi seçimiyle
+  // (peace.surrenderLand): önce tuttuğu, sonra komşu cephe ötesi.
+  const score = warScore(world, foe.id, nation.id);
+  const lost = surrenderLand(world, foe.id, nation.id, Math.max(0, score));
   return { demands: [], concessions: lost.map(({ province }) => provinceKeyOf(province)), terms: [] };
 }
 
@@ -181,15 +183,20 @@ function diplomacy(game, nation, rng) {
       // Kazanan taraf son kuruşuna kadar dayatmaz; bütçenin bir kısmı masada
       // kalır. Ülkelerin bir kısmı toprak yerine tazminat/imtiyaz ister ki
       // her barış aynı görünmesin.
+      // Zar sırası nesne yazımındakiyle aynı: önce iştah, sonra şart payı.
+      const appetite = 0.75 + rng() * 0.25;
       const offer = buildOffer(world, nation.id, foe.id, {
-        appetite: 0.75 + rng() * 0.25,
-        termShare: rng() < 0.35 ? 0.5 : 0,
+        appetite,
+        // Şart payı %35 → %15 (2026-11-23): bütçenin yarısını tazminata ayıran
+        // kazanan toprak bırakıyordu; masada toprak şikâyetinin bir kolu.
+        termShare: rng() < 0.15 ? 0.5 : 0,
       });
       // SAVAŞIN GÖVDESİ. Kazanan taraf, ilk ucuz küme karşılanabilir olur olmaz
-      // masaya oturmaz: ya cephe durmuş olmalı, ya talep tavana dayanmalı.
+      // masaya oturmaz: ya cephe durmuş olmalı, ya talep doymuş olmalı (küme
+      // tavanı ya da iştahın bütçesine sığan işgal kalmadı).
       // Beta 3'te bu kapı yoktu ve savaşların ortancası 12 haftaydı.
       const stalled = recordWarProgress(world, nation.id, foe.id, score);
-      const saturated = offer.demands.length >= demandLimit(score);
+      const saturated = landSaturated(world, nation.id, foe.id, offer, Math.floor(score * appetite));
       const bodied = game.turns.turn - rec.since >= WAR_MIN_BODY;
       // ELİ BOŞ MASAYA OTURMAZ. Ölçümde savaşların tamamı tam böyle
       // kapanıyordu: kazanan taraf hiçbir şey isteyemediği için beyaz barış
@@ -217,7 +224,15 @@ function diplomacy(game, nation, rng) {
       // ulkeyi kalici temerrutte tutuyordu). Uc yildir sonuc uretmeyen savas
       // beyaz baris teklif eder; alici onde ise peace.js beklentisi korur,
       // yorgunluk toleransi zamanla masayi kapatir.
-      offerPeace(game, nation, foe, { demands: [], concessions: [], terms: [] }, rng);
+      //
+      // Beyaz barış artık yalnız iki taraf da hiçbir şey tutmuyorsa: önde
+      // olan tuttuğunu ister, geride olan tutulanı bırakır. Ölçüldü (160×96,
+      // 400 hafta): barışların dörtte biri donmuş savaşın beyaz barışıydı ve
+      // cephede kazanılan toprak masada iade ediliyordu.
+      const offer = score > 0
+        ? buildOffer(world, nation.id, foe.id, { appetite: 1, frontier: false })
+        : surrenderOffer(world, nation, foe);
+      offerPeace(game, nation, foe, offer, rng);
     }
   }
 

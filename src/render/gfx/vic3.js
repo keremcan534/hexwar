@@ -26,7 +26,7 @@ import { registerGfxStyle } from './registry.js';
 import { buildVicTextures, VIC_LAYERS, GRAD_SCALE } from './vic3Textures.js';
 import { devHexKey } from './devData.js';
 import { DEVELOPMENT_MAX } from '../../game/econ/defs.js';
-import { BAND_REACH } from '../borderMesh.js';
+import { BAND_REACH, GL_MAX_PER_TILE } from '../borderMesh.js';
 
 const GLSL = `
 #define GFX_CUSTOM_BAND 1
@@ -41,13 +41,16 @@ uniform vec2 uVicTiles;      // ince / kaba döşemenin dünya enine sığma say
 uniform vec4 uVicLight;      // x yakın kabartma, y uzak kabartma, z alt, w üst (siyasi)
 uniform vec4 uVicLightT;     // arazi kipi: x kazanç, y uzak kazanç, z alt, w üst
 uniform vec4 uVicDetail;     // x (boş), y doku payı arazi, z doku eğimi, w erozyon
-uniform vec4 uVicWash;       // x biyom parlaklık payı (siyasi), y çarpan alt, z çarpan üst, w kar parlaklığı
+uniform vec3 uVicWash;       // x biyom parlaklık payı (siyasi), y çarpan alt, z çarpan üst
 uniform vec4 uVicSnow;       // x eşik, y yumuşaklık, z sırt payı, w eğim payı
 uniform vec4 uVicRock;       // x eğim başı, y eğim sonu, z kaya payı, w -
 uniform vec4 uVicFarm;       // x tarla payı, y yama eşiği, z kasaba yarıçapı (hex), w kasaba büyümesi
 uniform vec4 uVicZoom;       // x solgun başı, y solgun sonu, z yakın başı, w yakın sonu
 uniform vec2 uVicFar;        // siyasi uzak zoomun ışık alt/üst sınırı (yakına solgunla açılır)
 uniform float uVicDebug;     // 0 kapalı; 1 kar örtüsü, 2 kaya, 3 tarla, 4 kasaba (gri zemin üstünde)
+uniform vec4 uVicDepth;      // x ortam kapanması, y yükseklik tonu, z biyom rengi payı (siyasi), w ışık/gölge sıcaklığı
+uniform vec4 uVicPeak;       // siyasi: x kaya örtüsü, y kar örtüsü, z kayanın doygunluk kaybı, w kar parlaklığı
+uniform vec4 uVicCoast;      // x kumsal eni (hex), y kumsal payı, z yalı yarı eni (hex), w yarın ışık payı
 
 const float VIC_TEX = 512.0;
 const float VIC_GS = ${GRAD_SCALE.toFixed(1)};
@@ -196,6 +199,46 @@ vec4 vicDev(GfxLand L, out float town) {
   return ws > 1e-4 ? acc / ws : vec4(0.0);
 }
 
+/**
+ * Işığın rengi: güneşe dönük yamaç bir tık sıcak, gölge yamacı bir tık
+ * soğuk (gölgeyi gök aydınlatır). Yalnız parlaklığı değişen gölge gri ve
+ * plastik okunuyordu; Imhof'un kabartma haritalarındaki derinliğin yarısı bu
+ * renk ayrımıdır. hill: yönlü gölgenin kendisi (düzde 1), çarpan döner.
+ */
+vec3 vicLightTint(float hill, float amt) {
+  float t = clamp((hill - 1.0) * 2.2, -1.0, 1.0) * amt;
+  return t >= 0.0 ? vec3(1.0 + 0.040 * t, 1.0 + 0.012 * t, 1.0 - 0.045 * t)
+                  : vec3(1.0 + 0.030 * t, 1.0 + 0.006 * t, 1.0 - 0.040 * t);
+}
+
+/**
+ * KIYI: kumsal ve yalı yarı. Kıyı uzaklığı (T.a, hex eni) ve onun eğiminden.
+ *   x: kumsal payı (alçak, düz, kayalık olmayan kıyıda ince açık şerit),
+ *   y: yarın ışığı (kıyı kenarı ışığa bakıyorsa +, sırtını dönüyorsa −).
+ * Kara denizden bir basamak yukarıda okunur: dalgalı kıyı çizgisi boyunca
+ * bir yan aydınlık, öbür yan gölgeli bir dudak. Deniz pikseline dokunmaz.
+ * Ekranda bir pikselin altına inen şerit söner (uzakta titreşim olmasın).
+ */
+vec2 vicCoast(GfxLand L, vec4 T, float slope) {
+  float hexW = uHexSize * 1.7320508;
+  float cd = T.a;
+  float reach = max(uVicCoast.x, uVicCoast.z);
+  if (cd > reach * 1.2) return vec2(0.0);
+  float px = 1.0 / uZoom;
+  // Kumsal: alçak ve düz kıyı ovası; yar ve dağ kıyısında kumsal yok.
+  float bw = uVicCoast.x * hexW;
+  float lowFlat = (1.0 - smoothstep(0.10, 0.32, T.g)) * (1.0 - smoothstep(0.18, 0.45, slope));
+  float beach = (1.0 - smoothstep(bw * 0.45, bw, cd * hexW)) * lowFlat
+    * smoothstep(1.0, 2.5, bw / px);
+  // Yar: kıyı eğiminin tersi denize bakar; ışığın yatay yönüyle iç çarpım.
+  vec2 gc = gfxCoastGrad(L.world, max(uTerrTexel.x, px * 1.5));
+  float gl = length(gc);
+  float face = gl > 1e-6 ? dot(-gc / gl, normalize(L.Ldir.xy)) : 0.0;
+  float yw = uVicCoast.z * hexW;
+  float lip = (1.0 - smoothstep(yw * 0.25, yw, cd * hexW)) * smoothstep(0.8, 2.0, yw / px);
+  return vec2(beach, face * lip);
+}
+
 vec3 gfxLand(GfxLand L) {
   vec4 T = gfxTerrain(L.world);
   float emerge = smoothstep(uVicZoom.x, uVicZoom.y, uZoom);
@@ -277,7 +320,7 @@ vec3 gfxLand(GfxLand L) {
     w[VK_URBAN] = town;
   }
 
-  if (uVicDebug > 0.5) {
+  if (uVicDebug > 0.5 && uVicDebug < 4.5) {
     float v = uVicDebug < 1.5 ? snowCov : (uVicDebug < 2.5 ? w[VK_ROCK] : (uVicDebug < 3.5 ? w[VK_FIELDS] : w[VK_URBAN]));
     return mix(vec3(0.25), vec3(1.0, 0.95, 0.2), step(0.5, v)) * (0.8 + 0.2 * v);
   }
@@ -318,14 +361,56 @@ vec3 gfxLand(GfxLand L) {
     float hill = gfxHillshade(N, L.Ldir, k, mix(uVicFar.x, uVicLight.z, emerge), mix(uVicFar.y, uVicLight.w, emerge));
     float subL = gfxLuma(palSmooth);
     // Biyom parlaklığı TERRAIN_SHADE × 0.22'nin sürekli karşılığı (orman bir tık
-    // koyu, kar bir tık açık); kar yakında biraz daha öne çıkar.
+    // koyu, çöl bir tık açık).
     float bl = 1.0 + (subL / 0.54 - 1.0) * uVicWash.x * mix(0.6, 1.0, emerge);
-    bl += snowCov * uVicWash.w * emerge;
     // Sırt bir tık açık, vadi bir tık koyu (pişmiş ayrıntı − taban): dağ
     // hamur gibi değil oyulmuş kaya gibi okunur. Yalnız yaylada.
     float cav = clamp(ridge * 0.9, -0.06, 0.06) * smoothstep(0.05, 0.5, T.b) * emerge;
-    float m = clamp(hill * bl * (1.0 + cav), uVicWash.y, uVicWash.z);
-    return gfxWithLuma(L.base, gfxLuma(L.base) * mix(1.0, m, L.damp));
+    // Vadide ve dağ eteğinde gök kapanır; kıyıdaki kara çevresinden yüksek
+    // okunur (bkz. gfxOcclusion). Ovada etkisizdir: orada uydurma leke yok.
+    // Dağ eteğindeki ova yalnız üçte bir payla: geniş halka dağı görür ve
+    // eteğin bir hex boyu ovasını kirli bir kuşakla koyultuyordu.
+    float occ = gfxOcclusion(L.world, T.r, L.px) * mix(0.35, 1.0, smoothstep(0.05, 0.4, T.b));
+    float ao = clamp(1.0 - occ * uVicDepth.x, 0.70, 1.10);
+    // Yükseklik tonu: kıyı ovası bir tık koyu, yayla bir tık açık. Dümdüz bir
+    // ülke dolgusu kıtanın biçimini taşımıyordu; bu, gerçek yükseklikten gelen
+    // en geniş ölçekli ipucu (uzak zoomda da okunur).
+    float hyp = 1.0 + (T.g - 0.25) * uVicDepth.y;
+    vec2 coast = vicCoast(L, T, slope);
+    if (uVicDebug > 4.5) return vec3(coast.x, 0.5 + coast.y * 0.5, clamp(T.a, 0.0, 1.0));
+    float lipL = 1.0 + coast.y * uVicCoast.w;
+    float m = clamp(hill * bl * (1.0 + cav) * ao * hyp * lipL, uVicWash.y, uVicWash.z);
+    // Biyom rengi ülke renginin ÇARPANI olarak (doygunluğu normalize): orman
+    // ülke rengini bir tık yeşile ve koyuya, çöl sıcağa ve açığa, bozkır
+    // sarıya çeker. Ton ülkenin kalır, komşular ayrılır; ova artık tek kova
+    // dolgusu değil, iklimin kendisini taşır (gürültü değil, biyom verisi).
+    // Doygunluk korunur, yalnız ton döner: soluk bir ülke (açık mavi) çölde
+    // çarpanla griye düşüp kimliğini yitiriyordu.
+    vec3 tint = palSmooth / max(subL, 1e-3);
+    vec3 nat = L.base * mix(vec3(1.0), tint, uVicDepth.z * mix(0.6, 1.0, emerge) * L.damp);
+    vec3 c0 = L.base - vec3(gfxLuma(L.base));
+    vec3 c1 = nat - vec3(gfxLuma(nat));
+    nat = vec3(gfxLuma(nat)) + c1 * clamp(length(c0) / max(length(c1), 1e-4), 0.85, 1.35);
+    float lum = gfxLuma(L.base) * mix(1.0, m, L.damp);
+    vec3 col = gfxWithLuma(nat, lum);
+    // Kaya: dağın taşı ülke renginin altından görünür. Doygunluk düşer, ton
+    // sıcak griye kayar; ülke rengi tül gibi kalır (Vic3: dağ yine dağdır).
+    float rockW = clamp(w[VK_ROCK], 0.0, 1.0) * uVicPeak.x * L.damp;
+    vec3 rockC = mix(vec3(lum), col, 1.0 - uVicPeak.z) * vec3(1.035, 1.0, 0.95);
+    col = mix(col, gfxWithLuma(rockC, lum * 1.06), rockW);
+    // Kalıcı kar (zirve ve kutup buzu): beyaza yakın, ülke tonu hafifçe
+    // duyulur; biçimini kendi gölgesi anlatır (karda aralık dar, gölge soğuk).
+    float snowW = snowCov * uVicPeak.y * L.damp;
+    if (snowW > 0.0) {
+      float sh = gfxHillshade(N, L.Ldir, k, 0.70, 1.06) * clamp(ao, 0.8, 1.05);
+      vec3 sc = vec3(uVicPeak.w * sh) * vec3(0.97, 0.99, 1.03);
+      sc = mix(sc, gfxWithLuma(L.base, gfxLuma(sc)), 0.20);
+      col = mix(col, sc, snowW);
+    }
+    // Kumsal: ülke tonunda açık, sıcak bir şerit (kıyı çizgisinin hemen içi).
+    vec3 sand = gfxWithLuma(mix(vec3(0.86, 0.78, 0.58), L.base, 0.35), max(lum * 1.30, 0.34));
+    col = mix(col, sand, coast.x * uVicCoast.y * L.damp);
+    return col * mix(vec3(1.0), vicLightTint(hill * lipL, uVicDepth.w), L.damp);
   }
 
   // ---- ARAZİ / COĞRAFYA: siyasetsiz alt katman, iklim renkleriyle ----
@@ -364,7 +449,13 @@ vec3 gfxLand(GfxLand L) {
   // alan; sırt bir tık açık, vadi bir tık koyu. Çarpan değil sınırlı toplam
   // bir pay: orta zoomda kabartma yumuşak hamur gibi okunmasın.
   float cav = clamp(ridge * 0.9, -0.07, 0.07) * smoothstep(0.05, 0.5, T.b);
-  vec3 col = sub * mix(1.0, hT * (1.0 + cav), L.damp);
+  float ao = clamp(1.0 - gfxOcclusion(L.world, T.r, L.px) * mix(0.35, 1.0, smoothstep(0.05, 0.4, T.b))
+    * uVicDepth.x, 0.70, 1.10);
+  vec2 coast = vicCoast(L, T, slope);
+  float lipL = 1.0 + coast.y * uVicCoast.w;
+  // Arazi kipinde kumsal biyomdan gelir (kumsal hexi); kıyı şeridi yalnız ışık.
+  vec3 col = sub * mix(1.0, hT * (1.0 + cav) * ao * lipL, L.damp);
+  col *= mix(vec3(1.0), vicLightTint(hT * lipL, uVicDepth.w), L.damp);
   // Karın gölgesi soğuk: düz gri gölge karı plastik gösteriyordu.
   float shadeAmt = clamp((1.0 - hT) * 2.5, 0.0, 1.0);
   return mix(col, col * vec3(0.90, 0.96, 1.08), snowCov * shadeAmt);
@@ -383,7 +474,7 @@ vec2 vicBorderDist(GfxLand L) {
   int start = int(head.x + 0.5);
   vec2 center = vec2((L.raw.x + 0.5 * mod(L.raw.y, 2.0)) * SQ3 * uHexSize, L.raw.y * 1.5 * uHexSize);
   vec2 p = L.world - center;
-  for (int i = 0; i < 64; i++) {
+  for (int i = 0; i < ${GL_MAX_PER_TILE}; i++) {
     if (i >= n) break;
     int k = (start + i) * 2;
     vec4 inf = texelFetch(uSegData, ivec2((k + 1) % uSegW, (k + 1) / uSegW), 0);
@@ -469,11 +560,11 @@ const TUNE = {
   texTerr: 0.85,
   bump: 3.0,
   erosion: 0.03,
-  // Siyasi tül: biyom parlaklık payı, toplam çarpan sınırları, karın açılması.
+  // Siyasi tül: biyom parlaklık payı, toplam çarpan sınırları. (Karın yalnız
+  // parlaklık açması 2026-11-23'te kar örtüsüne döndü: snowWash/snowLum.)
   biomeLum: 0.42,
   modLo: 0.55,
   modHi: 1.50,
-  snowLift: 0.10,
   // Kar eşiği/yumuşaklığı, sırt payı, eğim payı.
   snowAt: 0.48,
   snowSoft: 0.07,
@@ -494,10 +585,13 @@ const TUNE = {
   // lightLo/lightHi'ye açılır. 0.93..1.10 uzak haritayı dümdüz bırakıyordu
   // (sıradağ seçilmiyordu); 0.80..1.18 + uzak kazanç 1.0 rölyefi okutur,
   // 2x büyütmede benek yok (2026-11-18 ölçümü, sheet-farz).
-  farLo: 0.80,
-  farHi: 1.18,
-  z0: 0.3,
-  z1: 1.0,
+  // 2026-11-23: oyunun en çok oynandığı 0.4 zoomda solgun ancak %6 açıktı,
+  // orada harita uzak zoomun düz ışığında kalıyordu; solgun 0.2'de başlar ve
+  // uzak aralık bir tık açıldı (2x büyütmede yine benek yok).
+  farLo: 0.76,
+  farHi: 1.22,
+  z0: 0.2,
+  z1: 0.9,
   zn0: 1.4,
   zn1: 3.0,
   // Ülke sınırı baskı şeridi: genişlik (CSS px), güç, doygunluk, kıyıdaki payı.
@@ -505,7 +599,31 @@ const TUNE = {
   fringe: 0.9,
   fringeSat: 1.9,
   fringeCoast: 0.35,
-  // Hata ayıklama görünümü: 1 kar, 2 kaya, 3 tarla, 4 kasaba.
+  // DERİNLİK (2026-11-23, Kerem: "haritamız fazla düz ve paint gibi"). Siyasi
+  // dolgu gölgeli rölyefe rağmen kova dolgusu okunuyordu: ova tek renk, dağ
+  // yalnız bir tık koyu ülke rengi, kıyı düz kesik. Hepsi gerçek veriden:
+  // ortam kapanması (yükseklik − çevresi; birim başına parlaklık), yükseklik
+  // tonu (taban yüksekliği başına), biyom renginin ülke rengine çarpan payı,
+  // ışık/gölge sıcaklığı.
+  ao: 2.0,
+  hypso: 0.32,
+  // 0.32'de açık mavi bir ülke ormanda camgöbeğine dönüyor, yeşil komşusuna
+  // yaklaşıyordu: ton yalnız bir tık döner, kimlik ülkenin kalır.
+  biomeTint: 0.20,
+  lightWarm: 1.3,
+  // Siyasi dağ: kaya örtüsü, kar örtüsü, kayada doygunluk kaybı, kar parlaklığı.
+  // Dağ uzak zoomda da seçilir (And kıyısı, Alpler); ülke rengi tül olarak kalır.
+  rockWash: 0.85,
+  snowWash: 0.70,
+  rockDesat: 0.65,
+  snowLum: 0.84,
+  // Kıyı: kumsal eni (hex) ve payı (siyasi), yalı yarı eni (hex) ve ışık payı.
+  beachW: 0.075,
+  beach: 0.50,
+  lipW: 0.22,
+  lip: 0.18,
+  // Hata ayıklama görünümü: 1 kar, 2 kaya, 3 tarla, 4 kasaba, 5 kıyı
+  // (siyasi kip; R kumsal, G yalı yarının ışığı, B kıyı uzaklığı).
   debug: 0,
 };
 
@@ -619,7 +737,7 @@ const VIC3 = registerGfxStyle({
       uVicLight: [t.reliefNear, t.reliefFar, t.lightLo, t.lightHi],
       uVicLightT: [t.reliefT, t.reliefTFar, t.lightTLo, t.lightTHi],
       uVicDetail: [0, t.texTerr, t.bump, t.erosion],
-      uVicWash: [t.biomeLum, t.modLo, t.modHi, t.snowLift],
+      uVicWash: [t.biomeLum, t.modLo, t.modHi],
       uVicSnow: [t.snowAt, t.snowSoft, t.snowRidge, t.snowSlope],
       uVicRock: [t.rockS0, t.rockS1, t.rockAmt, 0],
       uVicFarm: [t.farm, t.farmAt, t.townR, t.townGrow],
@@ -627,6 +745,9 @@ const VIC3 = registerGfxStyle({
       uVicFar: [t.farLo, t.farHi],
       uVicFringe: [t.fringePx, t.fringe, t.fringeSat, t.fringeCoast],
       uVicDebug: t.debug,
+      uVicDepth: [t.ao, t.hypso, t.biomeTint, t.lightWarm],
+      uVicPeak: [t.rockWash, t.snowWash, t.rockDesat, t.snowLum],
+      uVicCoast: [t.beachW, t.beach, t.lipW, t.lip],
     };
   },
   hexData: (world) => vicHexData(world),

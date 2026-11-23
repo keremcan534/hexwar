@@ -701,6 +701,24 @@ function resolveRound(game, battle) {
   }
 }
 
+/**
+ * Barışın İMZA ANINDA çağrılır (withdrawal.armiesHomeAfterPeace): artık
+ * savaşmayan tarafların muharebesi dağılır ki tümen aynı anda eve dönebilsin.
+ * Haftalık raunda kalsaydı masada imzalanan barışın tümeni bir hafta daha
+ * muharebede ve yabancı toprakta dururdu.
+ * @returns {number} dağılan muharebe sayısı
+ */
+export function dissolvePeaceBattles(game) {
+  const system = ensureBattles(game.world);
+  let dissolved = 0;
+  for (const battle of [...system.battles]) {
+    if (atWar(game.world, battle.attackerNation, battle.defenderNation)) continue;
+    dissolveBattle(game, battle);
+    dissolved++;
+  }
+  return dissolved;
+}
+
 export function runBattles(game) {
   const system = ensureBattles(game.world);
   for (const battle of [...system.battles]) {

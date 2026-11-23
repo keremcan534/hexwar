@@ -22,7 +22,7 @@
 import { registerGfxStyle } from './registry.js';
 import { buildVicTextures, VIC_LAYERS, GRAD_SCALE } from './vic3Textures.js';
 import { devHexData, devHexKey } from './devData.js';
-import { BAND_REACH } from '../borderMesh.js';
+import { BAND_REACH, GL_MAX_PER_TILE } from '../borderMesh.js';
 
 const GLSL = `
 #define GFX_CUSTOM_BAND 1
@@ -326,7 +326,7 @@ vec2 hoiBorderDist(GfxLand L) {
   int start = int(head.x + 0.5);
   vec2 center = vec2((L.raw.x + 0.5 * mod(L.raw.y, 2.0)) * SQ3 * uHexSize, L.raw.y * 1.5 * uHexSize);
   vec2 p = L.world - center;
-  for (int i = 0; i < 64; i++) {
+  for (int i = 0; i < ${GL_MAX_PER_TILE}; i++) {
     if (i >= n) break;
     int k = (start + i) * 2;
     vec4 inf = texelFetch(uSegData, ivec2((k + 1) % uSegW, (k + 1) / uSegW), 0);

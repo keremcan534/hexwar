@@ -69,6 +69,43 @@ export function nodesAdjacent(world, a, b) {
   return nodeNeighbors(world, a).includes(b);
 }
 
+const LANDMASS_CACHE = new WeakMap();
+
+/**
+ * Karenin KARA KÜTLESİ: geçilebilir kara hexlerinin bitişik bileşeni (su ve
+ * geçilmez dağ -1). Arazi oyun boyunca değişmez, dünya başına bir kez kurulur.
+ * İki kare aynı kütledeyse aralarında (siyaset izin verirse) kara yolu
+ * vardır: YZ'nin gemiye binmeden önce sorduğu soru budur.
+ */
+export function landmassOf(world, tile) {
+  if (!tile) return -1;
+  // Kare dizini satır × sütun + sütundur (worldgen.get).
+  const indexOf = (t) => t.row * world.cols + t.col;
+  let ids = LANDMASS_CACHE.get(world);
+  if (!ids) {
+    ids = new Int32Array(world.tiles.length).fill(-1);
+    let next = 0;
+    for (let start = 0; start < world.tiles.length; start++) {
+      const first = world.tiles[start];
+      if (ids[start] >= 0 || first.terrain.water || !first.terrain.passable) continue;
+      ids[start] = next;
+      const queue = [first];
+      for (let head = 0; head < queue.length; head++) {
+        for (const near of nodeNeighbors(world, queue[head])) {
+          if (near.terrain.water || !near.terrain.passable) continue;
+          const i = indexOf(near);
+          if (ids[i] >= 0) continue;
+          ids[i] = next;
+          queue.push(near);
+        }
+      }
+      next++;
+    }
+    LANDMASS_CACHE.set(world, ids);
+  }
+  return ids[indexOf(tile)] ?? -1;
+}
+
 /**
  * Gemiye binme / gemiden inme bedeli (bir haftalık yürüyüşün yarısı kadar).
  * Bedelsizken kıyıdan denize atlamak kara yolundan ucuz geliyordu: YZ kıyı

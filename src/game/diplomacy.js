@@ -580,6 +580,11 @@ export function makePeace(game, a, b, options = {}) {
     truceUntil: game.turns.turn + truceLengthFor(wars),
     wars,
   });
+  // Barış orduyu imza anında evine koyar (withdrawal.js). Haftanın sonunu
+  // beklemek, masada (tur arası) imzalanan barışın tümenini bir hafta düşman
+  // toprağında emirsiz bırakıyordu. Çağrı tur yöneticisinden geçer: barış
+  // kodu ordu katmanını içe almaz, içe alma döngüsü kurulmaz.
+  game.turns?.armiesHomeAfterPeace?.(a, b);
   // Toprak devri settleOccupations/claimAtPeace içinde nokta geçersizleme
   // ile işaretlendi; barışın kendisinin ayrıca harita izi yok.
   if (a === game.turns.playerNation || b === game.turns.playerNation) {

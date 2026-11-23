@@ -7,6 +7,31 @@ import { makeRng } from '../core/rng.js';
 import { growRegions, pickSeeds } from './regions.js';
 import { DEFAULT_ZONE, ZONE_CULTURES, ZONE_FAMILY } from './macro.js';
 
+/**
+ * Kültür üreteci sürümü (provinces-gen PROVINCE_GEN_LATEST deseni). Kayıt
+ * `genOptions.cultureGen` taşır; alanı olmayan kayıt 1 ile kurulur ve aynı
+ * halk haritasını bulur (kayıt v28'in kültür izi tutar).
+ *   1  bölge başına sabit tohum (ZONE_CULTURES)
+ *   2  tohum harita alanıyla çoğalır + etnik mozaik (world/mosaic.js)
+ */
+export const CULTURE_GEN_LATEST = 2;
+
+/** Standart dünyanın alanı: ZONE_CULTURES bu boyda ayarlandı. */
+const STANDARD_AREA = 160 * 96;
+/** Alan üssü: ulus sayısı alanın ~0.6 kuvvetiyle büyür; tohum ondan biraz hızlı. */
+const AREA_EXP = 0.75;
+
+/**
+ * Kültür tohumu çarpanı. Standart boyun altında 1: küçük haritada bölge zaten
+ * `kare / 30` ile kısılıyor ve 78×62 denetim dünyası aynı kalsın. Üstünde alanla
+ * doğrusal: ulus sayısı alanla büyürken sabit tohum 240×144'te bir halkı 11-14
+ * ulusa yayıyordu (ölçüldü, culture-diversity-audit, 3 tohum).
+ */
+export function cultureScale(world, gen = CULTURE_GEN_LATEST) {
+  if (gen < 2) return 1;
+  return Math.max(1, (world.cols * world.rows) / STANDARD_AREA) ** AREA_EXP;
+}
+
 const STEM = [
   'Ar', 'Ves', 'Kest', 'Morv', 'Dun', 'Sel', 'Tarn', 'Ilv', 'Gwen', 'Ozr',
   'Bask', 'Ren', 'Vol', 'Amr', 'Sirn', 'Kald', 'Hesh', 'Bran', 'Cor', 'Dral',
@@ -85,11 +110,12 @@ export function generateCultures(world, rng, options = {}) {
     byZone.get(zone).push(tile);
   }
   const zoneOrder = [...byZone.keys()].sort();
+  const scale = cultureScale(world, options.gen ?? 1);
   for (const zone of zoneOrder) {
     const tiles = byZone.get(zone);
     const want = options.count != null
       ? 1
-      : Math.max(1, Math.min(ZONE_CULTURES[zone] ?? 1, Math.floor(tiles.length / 30) || 1));
+      : Math.max(1, Math.min(Math.round((ZONE_CULTURES[zone] ?? 1) * scale), Math.floor(tiles.length / 30) || 1));
     seeds.push(...pickSeeds(
       tiles,
       want,
@@ -226,7 +252,7 @@ function diffuse(world, rng) {
  * Aday ne dev ne cılız olmalı — devi parçalamak haritayı boşaltır, cılızın
  * zaten dağılacak toprağı yoktur.
  */
-function shatter(world, rng) {
+function shatter(world, rng, scale = 1) {
   const provinces = world.provinces;
   const owned = new Map();
   for (const province of provinces) {
@@ -237,7 +263,7 @@ function shatter(world, rng) {
   const candidates = [...owned].filter(([, list]) => list.length >= 5 && list.length <= 26);
   if (!candidates.length) return [];
   rng.shuffle(candidates);
-  const count = Math.max(1, Math.min(4, Math.round(world.cultures.length / 9)));
+  const count = Math.max(1, Math.min(Math.round(4 * scale), Math.round(world.cultures.length / 9)));
   const broken = [];
 
   for (const [id, list] of candidates.slice(0, count)) {
@@ -295,11 +321,11 @@ function shatter(world, rng) {
  * kümeler ve komşulukları kurulmuş olmalı. Kendi rng dalını kullanır, ana
  * üretim akışını kaydırmaz.
  */
-export function mixCultures(world) {
+export function mixCultures(world, options = {}) {
   if (!world.provinces?.length || !world.cultures?.length) return;
   const rng = makeRng(`${world.seed}-culture-mix`);
   diffuse(world, rng);
-  const broken = shatter(world, rng);
+  const broken = shatter(world, rng, cultureScale(world, options.gen ?? 1));
   // Sayaçlar bileşimden yeniden kurulur: bir kültürün "toprağı" artık yalnız
   // çoğunluk olduğu kareler değil, azınlık payının karşılığı da dahil.
   for (const culture of world.cultures) {

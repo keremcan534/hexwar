@@ -25,6 +25,7 @@ import { EVENT_CARDS, resolveCard } from '../../src/game/eventCards.js';
 import { DIP_AI, DIP_ARM_IDS } from '../../src/game/dipDefs.js';
 import { POLICY_AI, POLICY_ARM_IDS } from '../../src/game/policyDefs.js';
 import { LEADER_TEST, TRAITS } from '../../src/game/leaderDefs.js';
+import { trespasses } from '../../src/game/withdrawal.js';
 
 /**
  * DİPLOMASİ KOLLARI (şartname §13.1): `DIP_ARMS=all` (varsayılan) · `none` ·
@@ -77,7 +78,10 @@ import { LEADER_TEST, TRAITS } from '../../src/game/leaderDefs.js';
 export function headless(seed, options = {}) {
   const game = Object.create(Game.prototype);
   game.world = generateWorld(seed, { cols: 78, rows: 62, ...options });
-  generateNations(game.world, { seed: `${seed}-nations`, count: options.nationCount ?? null });
+  // nationTotal: menünün ulus kaydıracı (Game.newWorld ile aynı alan).
+  generateNations(game.world, {
+    seed: `${seed}-nations`, count: options.nationCount ?? null, total: options.nationTotal ?? null,
+  });
   Object.assign(game, {
     selected: null, selectedUnit: null, selected_: [], activeGeneral: null,
     hovered: null, marquee: null, reachable: null,
@@ -436,6 +440,11 @@ export function scanInvariants(world) {
         if (!accepted.includes(cultureId)) push('culture', nation.id, `homeRule⊄accepted#${cultureId}`, cultureId);
       }
     }
+  }
+  // Barışta yabancı toprakta tümen durmaz (withdrawal.js): barış imza anında,
+  // geri kalanı haftanın sonunda eve koyar. Tarama hafta sonunda koşar.
+  for (const unit of world.units) {
+    if (trespasses(world, unit)) push('army', unit.nationId, `trespass#${unit.id}`, `${unit.tile?.q},${unit.tile?.r}`);
   }
   // Milis yalnız kendi ulusunun sahip olduğu karede durur (redesign D6:
   // "yalnız kendi toprağında, asla taarruz etmez").

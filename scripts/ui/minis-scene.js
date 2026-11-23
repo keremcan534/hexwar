@@ -117,7 +117,7 @@ window.__minisGallery = async function minisGallery(anim = 'idle', frame = 0, na
     g.fillRect(0, row * size, innerWidth, size);
     const atlas = minis.atlas(kind);
     const tint = minis.tintOf(nation, kind);
-    const book = minis.bookFor(1000);
+    const book = minis.bookFor(1000, minis.cellOf(atlas));
     for (let dir = 0; dir < 8; dir++) {
       minis.bakes = 0;
       minis.tick++;

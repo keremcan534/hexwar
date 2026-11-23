@@ -568,7 +568,7 @@ function bake(flag) {
 function bakeWave(flag) {
   const ctx = flag.src.getContext('2d');
   ctx.clearRect(0, 0, flag.w, flag.h);
-  drawFlag(ctx, flag.nation.flag, 0, 0, flag.w, flag.h);
+  drawFlag(ctx, flag.nation.flag, 0, 0, flag.w, flag.h, { war: flag.war });
   // Gri doku `overlay` ile biner: 128 nötr olduğu için renk kaymaz,
   // yalnız dokunun açık yerleri açar, koyu yerleri koyultur.
   clothOver(ctx, 0, 0, flag.w, flag.h, TUNE.clothAlpha);
@@ -596,7 +596,7 @@ function bakeBanner(flag) {
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, flag.src.width, flag.src.height);
-  drawFlag(ctx, flag.nation.flag, 0, F, cw, ch, { frame: false });
+  drawFlag(ctx, flag.nation.flag, 0, F, cw, ch, { frame: false, war: flag.war });
   clothOver(ctx, 0, F, cw, ch, 0.7);
   // Bezin alt yarısı hafif gölgede (ağırlığıyla sarkan kumaş). Üste ışık
   // konmaz: krem tül "ışıma" gibi duruyordu.
@@ -684,7 +684,7 @@ function bakeCrest(flag) {
   const { w, h } = flag;
   const ctx = flag.src.getContext('2d');
   ctx.clearRect(0, 0, w, h);
-  drawFlag(ctx, flag.nation.flag, 0, 0, w, h);
+  drawFlag(ctx, flag.nation.flag, 0, 0, w, h, { war: flag.war });
   clothOver(ctx, 0, 0, w, h, 0.45);
   ctx.globalCompositeOperation = 'source-atop';
   const edge = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
@@ -838,8 +838,9 @@ function draw(flag, time) {
  *   ve dalga payı kabın dışına taşar (canvas üstten negatif payla oturur,
  *   bezin göndere bağlı köşesi kabın sol üst köşesindedir)
  * @param {'wave'|'banner'|'crest'} style
+ * @param {{war?: boolean}} [opts] war: savaş sancağı (flagPainter drawSabres)
  */
-export function mountFlag(host, nation, cssW, cssH, style = 'wave') {
+export function mountFlag(host, nation, cssW, cssH, style = 'wave', { war = false } = {}) {
   if (!host || !nation?.flag) return null;
 
   // Kap arayüz ölçeğiyle yakınlaştırılmışsa (ui/uiScale.js, 1440p'de 1.33)
@@ -850,7 +851,7 @@ export function mountFlag(host, nation, cssW, cssH, style = 'wave') {
   const h = Math.round(cssH * dpr);
 
   let flag = host.__flag;
-  if (flag && flag.nation === nation && flag.w === w && flag.h === h && flag.style === style) return flag;
+  if (flag && flag.nation === nation && flag.w === w && flag.h === h && flag.style === style && flag.war === war) return flag;
 
   let canvas = flag?.canvas;
   if (!canvas) {
@@ -913,7 +914,7 @@ export function mountFlag(host, nation, cssW, cssH, style = 'wave') {
   if (!fixed) ensureCloth();
   flag = {
     canvas, ctx: canvas.getContext('2d'), src,
-    nation, w, h, strips, style, geo,
+    nation, w, h, strips, style, geo, war,
     amp: ampCss * dpr,
     static: still,
     tiny,

@@ -16,7 +16,7 @@
 import { atWar, nationStrength } from './diplomacy.js';
 import { BRANCH, officersOf } from './command.js';
 import { closedSeas, homeZones, zoneBalance } from './navy.js';
-import { orderMove, setDirective } from './movement.js';
+import { AUTO_SEA, nearOwnSoil, orderMove, setDirective } from './movement.js';
 import { controllerOf } from './control.js';
 import { armyPower, clearPath, unitsOn } from './units.js';
 import { nodeNeighbors } from '../world/provinceGraph.js';
@@ -89,7 +89,12 @@ function beaches(world, nation, enemy) {
     if (!center.terrain.passable || controllerOf(center) !== enemy.id || unitsOn(center).length) continue;
     const zones = zonesOfProvince(world, province.id).filter(({ zoneId }) => !closed.has(zoneId));
     const near = zones.reduce((best, { zoneId }) => Math.min(best, distance(zoneId)), Infinity);
-    if (!Number.isFinite(near)) continue;
+    // Yalnız yakın kıyı: kendi iç sularımıza en çok bir bölge ötede ve kendi
+    // toprağımıza AUTO_SEA.homeReach adımda. Eskiden aday listesinin dördü de
+    // okyanusun öbür yakasında olabiliyordu; yol tavanı yalnız öncüye
+    // bakıyordu (bkz. movement.farLanding).
+    if (!Number.isFinite(near) || near >= AUTO_SEA.landingZones) continue;
+    if (!nearOwnSoil(world, center, nation.id, AUTO_SEA.homeReach)) continue;
     const held = zones.some(({ zoneId }) => presence?.has(zoneId)
       && zoneBalance(world, presence, nation.id, zoneId).control > 0.5);
     const score = -4 * defendersNear(world, center, enemy.id)

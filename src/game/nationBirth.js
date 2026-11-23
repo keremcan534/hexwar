@@ -115,6 +115,10 @@ export function hasPassage(world, granterId, granteeId, turn = world.turn ?? 0) 
 
 /** Geçiş izni bitince içeride kalan tümen en yakın kendi karesine döner. */
 function evict(game, unit) {
+  // Barışın kuralıyla aynı yer seçimi (withdrawal.sendHome). Aşağıdaki eski
+  // arama 4000 düğümde ev bulamazsa tümeni dağıtıyordu (160x96 = 15.360
+  // düğüm); yalnız tur yöneticisi olmayan çağıranlar için kalır.
+  if (game.turns?.sendUnitHome) return game.turns.sendUnitHome(unit) === 'placed';
   const world = game.world;
   const seen = new Set([unit.tile]);
   const queue = [unit.tile];

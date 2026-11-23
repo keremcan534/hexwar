@@ -34,13 +34,13 @@ import { PerfMonitor } from '../core/perf.js';
 /** Masadaki teklif bu kadar hafta cevapsız kalırsa geri çekilir. */
 const PEACE_OFFER_TTL = 6;
 import { refreshCities } from './cities.js';
-import { closedSeas, zoneStatus } from './navy.js';
+import { closedSeas, releaseFleets, zoneAtTile, zoneStatus } from './navy.js';
 import { refreshModifiers } from './modifiers.js';
 import { controllerOf } from './control.js';
 import { loadFromSlot, savedInfo, saveToSlot } from './save.js';
 import { AUTO_SLOT, newSlotId } from './saveStore.js';
 import {
-  ORDER, clearOrder, executeOrders, idleUnits, setOrder,
+  FLEET_ORDER, ORDER, clearOrder, executeOrders, idleUnits, setFleetOrder, setOrder,
 } from './orders.js';
 import {
   BREAK_ORGANIZATION, MAX_ASSAULT_WIDTH, assaultWidth, battleAt, estimateBattle, selectAssault,
@@ -90,6 +90,9 @@ const EVENTS = [
   // Donanma (navy.js, ui/navyDock.js): deniz aşırı emrin makbuzu, öncelik
   // onayı ve bir deniz kaydının (muharebe/kaçınma) kartını açma isteği.
   'orderNote', 'navyOrder', 'navalReport',
+  // Seçili filo değişti (haritada sayaca tık / panel): yük filo kimliği ya da
+  // null. Filoya emir verildi: { fleet, zone, mode } (sağ tık ya da panel).
+  'fleet', 'fleetOrder',
   // Oyuncunun araştırması bitti (technology.runResearch): { techId, first }.
   // Keşif kartı (ui/discoveryCard.js) resimli kartı açar.
   'discovery',
@@ -173,6 +176,7 @@ export class Game {
     this.marquee = null;     // sürüklenirken oluşan seçim kutusu
     this.activeGeneral = null;  // komuta arayüzünde seçili general
     this.selected_ = [];     // seçili ordular (bkz. selectUnits)
+    this.selectedFleet = null;  // seçili filo kimliği (0 = sanal Home Fleet; bkz. selectFleet)
     this.turns = new TurnManager(this);
     this.listeners = Object.fromEntries(EVENTS.map((name) => [name, []]));
     this.listeners.battles.push((battle) => this.addBattleFloater(battle));
@@ -272,6 +276,8 @@ export class Game {
     this.hovered = null;
     this.selectedUnit = null;
     this.selected_ = [];
+    this.selectedFleet = null;
+    if (this.renderer?.sea) this.renderer.sea.selectedFleet = null;
     this.marquee = null;
     this.activeGeneral = null;
     // Barış teklifleri kayda girmez ve eski dünyanın savaşlarına aittir.
@@ -372,6 +378,13 @@ export class Game {
       this.emit('inspect', battle.id);
       return;
     }
+    // Filo sayacı (seaLayer çizer, yerini o bilir): filo seçilir, kare değil.
+    const fleet = mods.shift || mods.ctrl ? null : this.renderer.sea?.fleetAt?.(this.world, this.turns.playerNation, sx, sy);
+    if (fleet != null) {
+      this.selectFleet(fleet);
+      return;
+    }
+    if (this.selectedFleet != null) this.selectFleet(null);
     const hitUnit = this.unitAtScreen(sx, sy);
     const tile = hitUnit?.tile ?? this.tileAtScreen(sx, sy);
     // SHIFT EKLER, CTRL ÇIKARIR (HOI4/RTS). Eyalet seçimi değişmez: oyuncu
@@ -493,6 +506,16 @@ export class Game {
    * hedefler yayılır, yoksa hepsi tek kareye tıkışıp birbirini bloklar.
    */
   handleRightTap(sx, sy) {
+    // Seçili filo: sağ tıklanan deniz (kıyıda o kıyının denizi) filonun yeni
+    // nöbet yeridir. Ordu seçimiyle karışmaz (selectUnits filoyu bırakır).
+    if (this.selectedFleet != null) {
+      const zone = zoneAtTile(this.world, this.tileAtScreen(sx, sy));
+      if (zone < 0) {
+        this.emit('orderRefused', { tile: null, text: 'Right-click a sea (or a coast) to send the fleet there.' });
+        return false;
+      }
+      return this.orderFleet(this.selectedFleet, FLEET_ORDER.SEA, zone) != null;
+    }
     const hitUnit = this.unitAtScreen(sx, sy);
     // Hedef province'tir: tıklanan kare bağlı olduğu province'in merkezine
     // (hareket düğümüne) çekilir; denizde kare kendisidir.
@@ -560,7 +583,7 @@ export class Game {
           }
           const ok = adjacent
             ? this.attack(unit, tile, { manual: true })
-            : orderMove(this, unit, tile);
+            : orderMove(this, unit, tile, { auto: false });
           setDirective(unit, tile);
           if (ok) { issued++; continue; }
           waiting++;
@@ -586,7 +609,7 @@ export class Game {
           if (left) {
             waiting = 1;
             reasons.set('ultimatum', `ultimatum: the border opens in ${left} week(s)`);
-          } else if (orderMove(this, lead, tile)) {
+          } else if (orderMove(this, lead, tile, { auto: false })) {
             issued = 1;
           } else {
             waiting = 1;
@@ -621,7 +644,7 @@ export class Game {
           if (this.attack(unit, target)) { setDirective(unit, target); issued++; }
           break;
         }
-        if (this.canEnterFor(unit)(target) && orderMove(this, unit, target)) {
+        if (this.canEnterFor(unit)(target) && orderMove(this, unit, target, { auto: false })) {
           setDirective(unit, target);
           issued++;
           break;
@@ -692,6 +715,8 @@ export class Game {
     const mine = (units ?? []).filter(
       (unit) => unit && unit.hp > 0 && unit.nationId === this.turns.playerNation,
     );
+    // Ordu ile filo aynı anda seçili olmaz: sağ tık tek bir şeye emir verir.
+    if (mine.length && this.selectedFleet != null) this.selectFleet(null);
     this.selected_ = mine;
     this.selectedUnit = mine[0] ?? null;
     this.syncActiveGeneral(mine);
@@ -722,6 +747,37 @@ export class Game {
     this.activeGeneral = general;
     if (general) refreshFront(this.world, general);
     this.emit('command', general);
+  }
+
+  /**
+   * Filo seçimi (haritadaki sayaç ya da donanma paneli). Seçili filo varken
+   * sağ tık bir denize (ya da kıyıya) o filonun emridir. null: seçimi bırakır.
+   */
+  selectFleet(fleetId) {
+    const next = fleetId ?? null;
+    if (next != null && this.selected_.length) this.selectUnits([]);
+    if (next === this.selectedFleet) return;
+    this.selectedFleet = next;
+    // Sayacın seçili çerçevesi ve emir yolu çizimde (render/seaLayer).
+    if (this.renderer.sea) this.renderer.sea.selectedFleet = next;
+    this.emit('fleet', next);
+    this.requestRender();
+  }
+
+  /** Filo emri (sağ tık, panel): emri orders.js yazar; makbuz 'fleetOrder' olayıyla. */
+  orderFleet(fleetId, mode, zoneId = null) {
+    const nation = this.world?.nations[this.turns.playerNation];
+    if (!nation?.alive) return null;
+    const id = setFleetOrder(nation, fleetId, mode, zoneId);
+    if (id == null) return null;
+    if (this.selectedFleet === 0 && fleetId === 0) {
+      this.selectedFleet = id;
+      if (this.renderer.sea) this.renderer.sea.selectedFleet = id;
+    }
+    this.renderer.sea?.touchFleets?.();
+    this.emit('fleetOrder', { fleet: id, zone: zoneId, mode });
+    this.requestRender();
+    return id;
   }
 
   /** Tek birim seçimi: eski çağrı yerleri bozulmasın diye korunuyor. */
@@ -1269,6 +1325,9 @@ export class Game {
       delete this.world.nations[previous].delegation;
       // Bırakılan ulus YZ'ye geçer: subay kadrosunu yine kendisi kurar.
       restoreAiCommandDefaults(this.world.nations[previous]);
+      // Filo emirleri oyuncunundur: YZ'nin donanması yine tek havuz (Auto).
+      releaseFleets(this.world.nations[previous]);
+      this.selectedFleet = null;
     }
     if (previous !== nationId) applyPlayerCommandDefaults(nation);
     applyDefaultDelegation(nation, this.world.turn ?? 1);
@@ -1535,10 +1594,13 @@ export class Game {
     // Muharebe iğnesi: imleç üstündeyse iğne büyür ve imleç el olur.
     const battle = this.battleAtScreen(sx, sy);
     const hoverId = battle?.id ?? null;
-    if (hoverId !== this.renderer.hoverBattleId) {
+    // Filo sayacı da tıklanır: imleç el olur (seçilebildiği görünsün).
+    const overFleet = hoverId == null && this.renderer.sea?.fleetAt?.(this.world, this.turns.playerNation, sx, sy) != null;
+    if (hoverId !== this.renderer.hoverBattleId || overFleet !== this.hoverFleetCounter) {
       this.renderer.hoverBattleId = hoverId;
+      this.hoverFleetCounter = overFleet;
       const canvas = document.getElementById('map');
-      if (canvas) canvas.style.cursor = hoverId != null ? 'var(--cur-pointer, pointer)' : '';
+      if (canvas) canvas.style.cursor = hoverId != null || overFleet ? 'var(--cur-pointer, pointer)' : '';
       this.requestRender();
     }
     // Birim künyesi: imleç bir yığının üstündeyse onu, değilse boşu duyurur
@@ -1550,6 +1612,16 @@ export class Game {
       this.emit('hover', hoverTile ? { tile: hoverTile, x: sx, y: sy } : null);
     }
     const tile = this.tileAtScreen(sx, sy);
+    // Seçili filo: imlecin altındaki deniz (kıyıda o kıyının denizi) haritada
+    // "buraya" halkası alır — sağ tık emrinin hedefi tıklamadan görünür.
+    if (this.selectedFleet != null && this.renderer.sea) {
+      const zone = tile ? zoneAtTile(this.world, tile) : -1;
+      const next = zone >= 0 ? zone : null;
+      if (next !== this.renderer.sea.hoverZone) {
+        this.renderer.sea.hoverZone = next;
+        this.requestRender();
+      }
+    }
     if (tile === this.hovered) return;
     this.hovered = tile;
     this.hoverOdds = this.assaultOdds(tile);

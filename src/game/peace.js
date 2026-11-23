@@ -21,10 +21,16 @@ export const MAX_WAR_SCORE = 100;
 
 /**
  * Bir barışta alınabilecek azami province (küme) sayısı — MUTLAK tavan.
- * Fiilen bağlayan sınır `demandLimit(score)`tur; bu sabit yalnız hiçbir
- * anlaşmanın aşamayacağı üst çizgidir.
+ * Fiilen bağlayan sınır WARSCORE BÜTÇESİDİR (kümelerin fiyatı toplamı skoru
+ * aşamaz); `demandLimit(score)` yalnız bütçenin yanında duran güvenlik
+ * tavanıdır, bu sabit de hiçbir anlaşmanın aşamayacağı üst çizgi.
+ *
+ * 3'ten 8'e (2026-11-23, Kerem: "peacede çok az toprak alabiliyoruz, o yüzden
+ * cansız kalıyor dünya"): sayı tavanı bütçeden önce bağlıyordu. Topraklı
+ * barışın ortalaması 1.1 kümeydi; büyük bir ülkenin %5'lik kümesi 6-7 puan
+ * ettiği hâlde 60 puanlık zafer üç kümede kesiliyordu.
  */
-export const MAX_DEMAND_PROVINCES = 3;
+export const MAX_DEMAND_PROVINCES = 8;
 
 /**
  * Warscore'un satın alabileceği küme sayısı. Victoria'da savaşlar ülke
@@ -73,6 +79,44 @@ export function capitalProvinceOf(world, nationId) {
   return province && province.owner === nationId ? province : null;
 }
 
+/**
+ * EZİCİ ZAFERİN İSTİSNASI (2026-11-23): `taker` başkenti ve varlığın yarısını
+ * tutuyorsa (crushingVictory) başkent de masaya gelir. Devlet yine silinmez:
+ * en az bir kümesi kalır (demandLimitFor), başkenti en değerli kalan kümesine
+ * taşınır (relocateCapital). Kapalıyken eski kural birebir: başkent hiç
+ * masaya gelmez.
+ */
+export const CRUSHING_TAKES_CAPITAL = true;
+
+/** Masada korunan başkent kümesi (`taker` ezici zaferdeyse null). */
+export function protectedCapital(world, taker, owner) {
+  if (CRUSHING_TAKES_CAPITAL && taker != null && crushingVictory(world, taker, owner)) return null;
+  return capitalProvinceOf(world, owner);
+}
+
+/**
+ * Başkentini masada yitiren ama toprağı kalan devlet: başkent en değerli
+ * kalan kümenin merkezine taşınır. Taşınmasaydı `nation.capital` yabancı
+ * karede kalır, capitalProvinceOf null döner ve bir sonraki barış kalan her
+ * kümeyi başkent korumasız alırdı.
+ */
+export function relocateCapital(world, nationId) {
+  const nation = world.nations?.[nationId];
+  if (!nation?.alive || capitalProvinceOf(world, nationId)) return false;
+  let best = null;
+  let bestValue = -1;
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== nationId || !province.center) continue;
+    const value = provinceValue(world, province);
+    if (value > bestValue) { bestValue = value; best = province; }
+  }
+  if (!best) return false;
+  // Şehirli kare önce: başkent bir şehirdir (çizim, prestij, ikmal).
+  const city = best.tileIdx.map((idx) => world.tiles[idx]).find((tile) => tile.city);
+  nation.capital = city ?? best.center;
+  return true;
+}
+
 export function warGoalOf(world, a, b) {
   const id = relation(world, a, b)?.goals?.[a];
   return id == null ? null : (world.provinces?.[id] ?? null);
@@ -101,22 +145,33 @@ export function suggestWarGoal(world, a, b) {
   return best;
 }
 
-export function demandLimit(score) {
+/**
+ * Güvenlik tavanı: skor başına en çok kaç küme. Bağlayan sınır bütçedir
+ * (`offerCost ≤ score`); bu eğri yalnız çok ucuz kümelerin (dev ülkenin boş
+ * sınır kümeleri, taban fiyat 6) tek barışta yığılmasını keser ve YZ'nin
+ * "masaya oturma" sinyalidir (ai.js `landSaturated`).
+ *
+ * Eski basamaklar 15 → 1, 30 → 2, 70 → 3'tü (2026-09-04/10-08 ölçümleri):
+ * o zaman savaş payı 50 yılda %39-45'e çıkıyordu ve kartopunu kesmenin yolu
+ * buydu. Bugün kartopunu başka kapılar tutuyor (müttefik ağırlığı, cephe
+ * sektörleri, barış devlet silmez, kuşatma); savaş payı 160×96'da %11'e indi
+ * ve sayı tavanı oyuncunun en sık şikâyeti oldu. Eğri `LAND_STEP` puanda bir
+ * küme: 6, en ucuz kümenin fiyatıdır (PROVINCE_PRICE.floor), yani tavan
+ * bütçenin önüne geçmez. 12 denendi: teslim barışlarının çoğu 15-37 puanda
+ * imzalanıyor ve tavan orada yine 1-2 kümede kesiyordu, savaş payı
+ * kımıldamadı (%11.3 → %11.7, audit:borders 160×96 × 45 yıl).
+ */
+export const LAND_STEP = 6;
+/** Bu skorun altında toprak istenemez: sınır kımıldatan her savaş kazanılmış sayılmaz. */
+export const LAND_FLOOR = 15;
+
+export function demandLimit(score, { crushing = false } = {}) {
   const s = Math.max(0, score);
-  // Basamaklar bes puan yukari cekildi: 50 yilda haritanin %33-36'si el
-  // degistiriyordu (audit:war-pressure / borders "kartopu" esigi ucte bir).
-  // Kazanan hala kazanir, ama ayni puanla bir kume daha az alir.
-  // Tavan 6'dan 4'e: 50 yilda uc tohumdan birinde haritanin %44'u el
-  // degistiriyordu (audit:borders). Savas sinir duzeltir, ulke yutmaz.
-  if (s < 15) return 0;
-  // 30 -> 40 / 70 -> 80 denendi (2026-10-08, hex yürüyüşü): kartopu ölçümü
-  // gürültü içinde kaldı (%40.4 -> %39.9), geri alındı — bağlayan kaldıraç
-  // masa değil, küçük devletin iki-üç barışta tükenmesi.
-  if (s < 30) return 1;
-  // 55 -> 70 (2026-09-04): kusatma genisligi savaslari kesinlestirince 50
-  // yilda el degistiren kume payi %39a cikti; ucuncu kume daha buyuk zafer ister.
-  if (s < 70) return 2;
-  return MAX_DEMAND_PROVINCES;
+  if (s < LAND_FLOOR) return 0;
+  // EZİCİ ZAFER (başkent bizde, varlığının çoğu işgalde): tavan kalkar,
+  // yalnız bütçe ve mutlak çizgi kalır — büyük parçalar masaya gelir.
+  if (crushing) return MAX_DEMAND_PROVINCES;
+  return Math.min(MAX_DEMAND_PROVINCES, 1 + Math.floor((s - LAND_FLOOR) / LAND_STEP));
 }
 
 /**
@@ -136,8 +191,8 @@ export function demandLimit(score) {
 export const PROVINCE_PRICE = {
   /** Her kümenin taban bedeli: bomboş sınır kümesi bile bedava değildir. */
   base: 5,
-  /** Ülke payının warscore karşılığı. */
-  shareWeight: 130,
+  /** Ülke payının warscore karşılığı. 130 → 70 (2026-11-23): teslim barışları 37-47 puanla 1-2 kümede kalıyordu, sınır payı %11 idi (TASARIM §12 "Masada toprak"). */
+  shareWeight: 70,
   /**
    * Pay büyüdükçe fiyat yavaşlar. Sönümleme olmadan üç kümeli bir devletin her
    * kümesi 48 ederdi: küçük devletler hiçbir zaman parçalanamaz, üstelik sert
@@ -147,8 +202,8 @@ export const PROVINCE_PRICE = {
   shareDamping: 1.5,
   floor: 6,
   cap: 45,
-  /** Fiilen işgal edilen kümenin indirimi (tamamı tutuluyorsa %40). */
-  occupationDiscount: 0.4,
+  /** Fiilen işgal edilen kümenin indirimi (tamamı tutuluyorsa %60; 2026-11-23 öncesi %40). */
+  occupationDiscount: 0.6,
 };
 
 /**
@@ -360,33 +415,81 @@ function attritionShareOf(world, a, b, side) {
  * başkentini alıp ordusunu dağıttığı hâlde üç yılda +28 topluyordu; o skorla
  * tek bir sınır kümesi bile satın alınamıyordu.
  */
+/**
+ * Kümenin `nationId` elindeki zafer puanı payı (0-1): merkez hex %75, kalan
+ * hexler %25. Küme döngüsü kısmi işgal payı kadar puan kımıldatır — savaş
+ * temposu "son kareyi de al" şartına kilitlenmez, cephe ilerledikçe skor akar.
+ */
+function shareControlledBy(world, province, nationId) {
+  let count = 0;
+  for (const idx of province.tileIdx) {
+    if (controllerOf(world.tiles[idx]) === nationId) count++;
+  }
+  const hexes = count / Math.max(1, province.tileIdx.length);
+  const center = province.center && controllerOf(province.center) === nationId ? 1 : 0;
+  return VICTORY_POINT_SHARE * center + (1 - VICTORY_POINT_SHARE) * hexes;
+}
+
+/** `b`nin ham varlığının `a` elindeki payı (0-1, zafer puanı tartısıyla). */
+export function occupationShare(world, a, b) {
+  let held = 0;
+  let total = 0;
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== b) continue;
+    const value = provinceValue(world, province);
+    total += value;
+    held += value * shareControlledBy(world, province, a);
+  }
+  return total > 0 ? held / total : 0;
+}
+
+/** Ezici zaferin işgal eşiği: başkentle birlikte varlığın yarısı. */
+export const CRUSHING_SHARE = 0.5;
+
+/**
+ * EZİCİ ZAFER: `a`, `b`nin başkentini ve varlığının en az yarısını tutuyor.
+ * Masada iki şey açılır: küme tavanı kalkar (yalnız bütçe ve mutlak çizgi) ve
+ * vassallık güç oranına bakmadan istenebilir — ordusu dağılmış, başkenti
+ * düşmüş devletin "2.5 kat zayıf" olması beklenmez. Başkent yine masaya
+ * gelmez: barış devlet silmez (capitalProvinceOf), kalan devlet vassal olur.
+ */
+export function crushingVictory(world, a, b) {
+  if (!atWar(world, a, b) || !holdsCapital(world, a, b)) return false;
+  return occupationShare(world, a, b) >= CRUSHING_SHARE;
+}
+
+/** Bu savaşta `a`nın masadaki küme tavanı (ezici zaferde kalkar). */
+export function demandLimitFor(world, a, b, score = warScore(world, a, b)) {
+  const limit = demandLimit(score, { crushing: score >= LAND_FLOOR && crushingVictory(world, a, b) });
+  // BARIŞ DEVLET SİLMEZ, ezici zaferde de: en az bir küme kalır. Ezici
+  // zaferde başkent de masaya geldiği için (protectedCapital) son kümeyi
+  // tavan korur. Ölçüldü (160×96 × 45 yıl): bu kapı yokken ezici zafer
+  // küçük devletleri bütünüyle ilhak ediyordu, ulus sayısı 204 → 182.
+  if (!limit) return 0;
+  let owned = 0;
+  for (const province of world.provinces ?? []) {
+    if (province.owner === b && province.econ) owned++;
+  }
+  return Math.min(limit, Math.max(0, owned - 1));
+}
+
 export function warScore(world, a, b) {
   if (!atWar(world, a, b)) return 0;
   let held = 0;
   let lost = 0;
   let theirTotal = 0;
   let ourTotal = 0;
-  // Küme döngüsü; kısmi işgal payı kadar puan kımıldatır — savaş temposu
-  // "son kareyi de al" şartına kilitlenmez, cephe ilerledikçe skor akar.
   // Tartı HAM değerdir: masadaki fiyatın tavanı/indirimi cepheyi eğmesin.
-  const shareControlledBy = (province, nationId) => {
-    let count = 0;
-    for (const idx of province.tileIdx) {
-      if (controllerOf(world.tiles[idx]) === nationId) count++;
-    }
-    const hexes = count / Math.max(1, province.tileIdx.length);
-    const center = province.center && controllerOf(province.center) === nationId ? 1 : 0;
-    return VICTORY_POINT_SHARE * center + (1 - VICTORY_POINT_SHARE) * hexes;
-  };
+  const shareOf = (province, nationId) => shareControlledBy(world, province, nationId);
   for (const province of world.provinces ?? []) {
     if (province.owner === b) {
       const value = provinceValue(world, province);
       theirTotal += value;
-      held += value * shareControlledBy(province, a);
+      held += value * shareOf(province, a);
     } else if (province.owner === a) {
       const value = provinceValue(world, province);
       ourTotal += value;
-      lost += value * shareControlledBy(province, b);
+      lost += value * shareOf(province, b);
     }
   }
   // İşgal payı asıl belirleyicidir: toprak tutmadan savaş kazanılmış sayılmaz.
@@ -417,11 +520,12 @@ export function offerCost(world, offer) {
   return provinces(offer?.demands) + terms - provinces(offer?.concessions);
 }
 
-/** Vassallik yalnız açık ara zayıf düşmandan istenebilir. */
+/** Vassallik açık ara zayıf düşmandan ya da ezici zaferde istenebilir. */
 export function canVassalize(world, a, b) {
+  if (!(world.nations[b].tiles > 0)) return false;
   const mine = nationStrength(world, world.nations[a]);
   const theirs = nationStrength(world, world.nations[b]);
-  return mine > theirs * 2.5 && world.nations[b].tiles > 0;
+  return mine > theirs * 2.5 || crushingVictory(world, a, b);
 }
 
 /**
@@ -542,11 +646,11 @@ export function termAvailable(world, a, b, termId) {
  * Haritadaki kareden masadaki küme: barış ekranı hexe tıklatır, teklif
  * kümeyi taşır. Yalnız karşı tarafın *egemenliğindeki* kümeler istenebilir.
  */
-export function demandKeyForTile(world, tile, targetId) {
+export function demandKeyForTile(world, tile, targetId, takerId = null) {
   const province = world.provinces?.[tile?.provinceId];
   if (!province || province.owner !== targetId) return null;
   // Haritadan tıklanan başkent de masaya gelmez (capitalProvinceOf).
-  if (province === capitalProvinceOf(world, targetId)) return null;
+  if (province === protectedCapital(world, takerId, targetId)) return null;
   return provinceKeyOf(province);
 }
 
@@ -589,10 +693,59 @@ export function warExpectation(world, receiverId, proposerId) {
   const score = warScore(world, receiverId, proposerId);
   if (score <= 0) return score;
   let held = 0;
-  for (const { cost } of occupiedProvincesOf(world, receiverId, proposerId)
-    .slice(0, demandLimit(score))) held += cost;
+  const limit = demandLimitFor(world, receiverId, proposerId, score);
+  for (const { cost } of affordableOccupied(world, receiverId, proposerId, score, limit)) held += cost;
   // Hiç toprak tutmuyorsa bile bedavaya imzalamaz: en ucuz şart kadarını bekler.
   return Math.min(score, Math.max(held, CHEAPEST_TERM));
+}
+
+/**
+ * Bütçenin satın aldığı işgal: `a`nın tuttuğu `b` kümeleri, pahalıdan ucuza,
+ * toplamı `budget`ı aşmadan ve küme tavanı içinde. Kazananın beklentisi ile
+ * kaybedenin teslim teklifi (ai.surrenderOffer) AYNI listeyi okur: biri sayı,
+ * öteki bütçe saysaydı teslim teklifi beklentiyi hiç karşılamazdı.
+ */
+export function affordableOccupied(world, a, b, budget, maxTiles = demandLimitFor(world, a, b)) {
+  const out = [];
+  let spent = 0;
+  for (const entry of occupiedProvincesOf(world, a, b)) {
+    if (out.length >= maxTiles) break;
+    if (spent + entry.cost > budget) continue;
+    out.push(entry);
+    spent += entry.cost;
+  }
+  return out;
+}
+
+/**
+ * Kaybedenin TESLİM teklifi (ai.surrenderOffer): kazananın skorunun satın
+ * aldığı toprak, kazananın masada kendi kuracağı sırayla — önce tuttuğu,
+ * sonra ona komşu cephe ötesi (buildOffer ile aynı seçim). Eskiden yalnız
+ * işgal edilmiş küme verilirdi; barışların yarısı teslimle bitiyor ve
+ * savaşlar 20 haftada kapanıyordu: kazanan 37-47 puanla ortalama 1.5 küme
+ * alıyordu (ölçüldü, 160×96, 400 hafta).
+ */
+export function surrenderLand(world, winner, loser, budget) {
+  const limit = demandLimitFor(world, winner, loser);
+  return contiguousPick(world, winner, occupiedProvincesOf(world, winner, loser),
+    (entry, spent, count) => spent + entry.cost <= budget && count < limit,
+    frontierProvincesOf(world, winner, loser));
+}
+
+/**
+ * Toprak talebi doydu mu: küme tavanı doldu ya da bütçeye sığan işgal edilmiş
+ * küme kalmadı. YZ kazananın masaya oturma sinyali (ai.js "saturated"):
+ * eskiden sayı tavanına bakıyordu, tavan bütçeden önce bağladığı için.
+ */
+export function landSaturated(world, a, b, offer, budget) {
+  const score = warScore(world, a, b);
+  const demands = new Set(offer?.demands ?? []);
+  if (demands.size >= demandLimitFor(world, a, b, score)) return true;
+  let spent = 0;
+  for (const key of demands) spent += provinceWarCost(world, provinceFromKey(world, key));
+  return !occupiedProvincesOf(world, a, b).some((entry) => (
+    !demands.has(provinceKeyOf(entry.province)) && spent + entry.cost <= budget
+  ));
 }
 
 export function acceptanceTolerance(world, receiverId, proposerId) {
@@ -651,11 +804,11 @@ export function offerMeetsExpectation(world, receiverId, proposerId, offer) {
 export function offerRefusal(world, a, b, offer) {
   const demands = offer?.demands ?? [];
   const score = Math.max(0, warScore(world, a, b));
-  const limit = demandLimit(score);
+  const limit = demandLimitFor(world, a, b, score);
   if (demands.length > limit) {
     return limit === 0
       ? 'They will not cede an inch: your war score buys no territory yet.'
-      : `Your war score supports no more than ${limit} province${limit === 1 ? '' : 's'}.`;
+      : `Your war score supports no more than ${limit} state${limit === 1 ? '' : 's'} in one treaty.`;
   }
   for (const termId of offer?.terms ?? []) {
     if (!termAvailable(world, a, b, termId)) {
@@ -697,17 +850,22 @@ export function occupiedProvincesOf(world, a, b) {
   const rec = relation(world, a, b);
   if (rec?.reason === 'coalition' && rec.aggressor === b) return [];
   const held = [];
-  const capital = capitalProvinceOf(world, b);
+  const capital = protectedCapital(world, a, b);
   for (const province of world.provinces ?? []) {
     if (province.owner !== b || !province.econ) continue;
-    // Başkent state'i masaya gelmez: barış devlet silmez (capitalProvinceOf).
+    // Başkent state'i masaya gelmez (barış devlet silmez), ezici zafer hariç (protectedCapital).
     if (province === capital) continue;
     let count = 0;
     for (const idx of province.tileIdx) {
       if (controllerOf(world.tiles[idx]) === a) count++;
     }
     const share = count / Math.max(1, province.tileIdx.length);
-    if (share < OCCUPATION_CLAIM_SHARE) continue;
+    // Merkezi (zafer puanı) tutulan küme de masaya gelir: warscore onun
+    // payının %75'ini zaten sayıyor. Yalnız hex payına bakınca skor yüksek
+    // ama masa boş kalıyordu — merkezleri alıp kenarlarına yayılamayan ordu
+    // (ölçüldü: kazananın talep ettiği barışlarda ortalama skor 51, masaya
+    // gelebilen küme 0.18).
+    if (share < OCCUPATION_CLAIM_SHARE && controllerOf(province.center) !== a) continue;
     held.push({ province, share, cost: provinceWarCost(world, province) });
   }
   return held.sort((x, y) => y.cost - x.cost);
@@ -729,9 +887,9 @@ export function occupiedProvincesOf(world, a, b) {
  * kalamiyorsam toprak yerine tazminat" bir devletin makul davranisidir,
  * kopuk bir cep acmaktan iyidir.
  */
-function contiguousPick(world, taker, candidates, canAfford) {
+function contiguousPick(world, taker, candidates, canAfford, frontier = []) {
   const picked = [];
-  if (!candidates.length) return picked;
+  if (!candidates.length && !frontier.length) return picked;
   // Alanin mevcut sinirina komsu olan her kume "ulasılabilir" sayilir.
   const reachable = new Set();
   const addNeighbours = (province) => {
@@ -759,7 +917,51 @@ function contiguousPick(world, taker, candidates, canAfford) {
     spent += entry.cost;
     addNeighbours(entry.province);
   }
+  // CEPHE ÖTESİ (ikinci kat): işgal edilmiş toprak bittiyse artan bütçe,
+  // yalnız bize ya da bu masada alınana KOMŞU kümeye harcanır — ada olmaz.
+  const beyond = [...frontier];
+  for (;;) {
+    const index = beyond.findIndex((entry) => reachable.has(entry.province.id)
+      && canAfford(entry, spent, picked.length));
+    if (index < 0) break;
+    const [entry] = beyond.splice(index, 1);
+    picked.push(entry);
+    spent += entry.cost;
+    addNeighbours(entry.province);
+  }
   return picked;
+}
+
+/**
+ * CEPHE ÖTESİ: `b`nin işgal edilmemiş (masaya `occupiedProvincesOf`dan
+ * gelmeyen), başkent olmayan ve `a`nın toprağına ya da işgaline komşu
+ * kümeleri; tam fiyatla (işgal indirimi yok), pahalıdan ucuza.
+ *
+ * NEDEN: oyuncu masada haritadan HER kümeye tıklayabiliyordu (fiyatı tam),
+ * YZ ise yalnız işgal ettiğini isteyebiliyordu. Kazananın talep ettiği
+ * barışlarda ortalama skor 43-51 iken masaya gelebilen küme 0.2-0.3'tü:
+ * bütçe şartlara akıyor, sınır kımıldamıyordu (Kerem: "peacede çok az toprak
+ * alabiliyoruz, o yüzden cansız kalıyor dünya"). HOI4 de işgal edilmemiş
+ * state'i daha pahalıya verir. Koalisyon kuralı aynıdır.
+ */
+export function frontierProvincesOf(world, a, b) {
+  const rec = relation(world, a, b);
+  if (rec?.reason === 'coalition' && rec.aggressor === b) return [];
+  const occupied = new Set(occupiedProvincesOf(world, a, b).map((entry) => entry.province.id));
+  const touching = new Set();
+  for (const province of world.provinces ?? []) {
+    if (province.owner === a || occupied.has(province.id)) {
+      for (const id of province.neighbors ?? []) touching.add(id);
+    }
+  }
+  const capital = capitalProvinceOf(world, b);
+  const out = [];
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== b || !province.econ || province === capital) continue;
+    if (occupied.has(province.id) || !touching.has(province.id)) continue;
+    out.push({ province, share: 0, cost: provinceWarCost(world, province), beyond: true });
+  }
+  return out.sort((x, y) => y.cost - x.cost);
 }
 
 /**
@@ -780,7 +982,9 @@ const TERM_PRIORITY = [
  */
 export function buildOffer(world, a, b, options = {}) {
   const score = Math.max(0, warScore(world, a, b));
-  const { appetite = 1, maxTiles = demandLimit(score), termShare = 0 } = options;
+  const {
+    appetite = 1, maxTiles = demandLimitFor(world, a, b, score), termShare = 0, frontier = true,
+  } = options;
   const offer = { demands: [], concessions: [], terms: [] };
   const budget = Math.floor(score * clamp(appetite, 0, 1));
   if (budget <= 0) return offer;
@@ -796,7 +1000,8 @@ export function buildOffer(world, a, b, options = {}) {
   // warscore'un izin verdiginden fazla kume istiyordu. Muzaffer saldirgan
   // masadan eli bos kalkiyordu (audit:war-outcome CRITICAL).
   for (const { province, cost } of contiguousPick(world, a, occupiedProvincesOf(world, a, b),
-    (entry, spent, count) => spent + entry.cost <= left && count < maxTiles)) {
+    (entry, spent, count) => spent + entry.cost <= left && count < maxTiles,
+    frontier ? frontierProvincesOf(world, a, b) : [])) {
     offer.demands.push(provinceKeyOf(province));
     left -= cost;
   }
@@ -912,12 +1117,16 @@ export function signPeace(game, a, b, offer) {
   const repeatScale = Math.min(2.5, 1 + 0.5 * Math.max(0, repeats - 1));
   const transfer = (keys, from, to) => {
     const taken = [];
-    const capital = capitalProvinceOf(world, from);
+    const capital = protectedCapital(world, to, from);
+    let left = world.provinces?.filter((p) => p.owner === from && p.econ).length ?? 0;
     for (const key of keys ?? []) {
       const province = provinceFromKey(world, key);
       if (!province || province.owner !== from) continue;
-      // Eski kayıttaki ya da bayat bir teklif başkenti taşısa bile devredilmez.
+      // Eski kayıttaki ya da bayat bir teklif başkenti taşısa bile devredilmez (ezici zafer hariç).
       if (province === capital) continue;
+      // Son küme devredilmez: barış devlet silmez (demandLimitFor ile aynı kural).
+      if (left <= 1) break;
+      left--;
       taken.push(province);
       // Devir küme bütünüyle: sınır hiçbir kümeyi ikiye bölmez.
       game.turns.claimAtPeace(province.center, to);
@@ -930,6 +1139,9 @@ export function signPeace(game, a, b, offer) {
   };
   transfer(offer?.demands, b, a);
   transfer(offer?.concessions, a, b);
+  // Ezici zaferde başkentini yitiren devlet kalan toprağında yaşar.
+  relocateCapital(world, a);
+  relocateCapital(world, b);
   applyTerms(game, a, b, offer?.terms);
   // ZAFER PRESTİJ GETİRİR (puan tablosu, hegemony.js): kazanan alır,
   // kaybeden verir. Beyaz barışta kimse kazanmaz. Net kazanç barış

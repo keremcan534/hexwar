@@ -5,6 +5,22 @@ import { makeFlag } from './flags.js';
 import { growRegions } from './regions.js';
 import { archetypePlan } from './macro.js';
 import { cultureChecksum, subjectPeoples } from './peoples.js';
+import { edgeValue, ridgeTable, riverBetween } from './provinces-gen.js';
+import { riverFlowTable } from './rivers.js';
+import { DIRS } from '../core/hex.js';
+
+/**
+ * Ülke toprağı üreteci sürümü. Kayıt dünyayı tohumdan yeniden kurar ve halk
+ * izini (cultureChecksum) doğrular; sınırlar kayarsa eski kayıt reddedilirdi.
+ * Sürüm `genOptions.nationGen` ile saklanır, alanı olmayan eski kayıt v1 ile
+ * açılır (save.deserialize). v1'e DOKUNMA.
+ *
+ *   1: moveCost + ana zar jitter'ı, uç tohumlar, artık en küçüğe
+ *   2: şekil kuralı (bkz. shapeKit): uzaklık tabanlı adım, nehir/sırt bedeli,
+ *      ortalanmış doldurma tohumları, kol ve cep düzeltmesi; jitter yerel akıştan
+ */
+export const NATION_GEN_LATEST = 2;
+import { mosaicAfterNations } from './mosaic.js';
 
 const SYL_START = ['Ar', 'Bel', 'Cor', 'Dra', 'El', 'Fen', 'Gor', 'Hal', 'Ir', 'Kaz', 'Lor', 'Mar', 'Nor', 'Oss', 'Pra', 'Quen', 'Rav', 'Sar', 'Tur', 'Ul', 'Vas', 'Wyn', 'Yar', 'Zen'];
 const SYL_MID = ['a', 'e', 'i', 'o', 'an', 'en', 'ir', 'or', 'al', 'ath', 'esh', 'ov', 'ur', 'yl'];
@@ -166,6 +182,14 @@ export function generateNations(world, options = {}) {
   const graph = {
     neighbors: (province) => province.neighbors.map((i) => world.provinces[i]),
   };
+  const version = options.version ?? world.genOptions?.nationGen ?? NATION_GEN_LATEST;
+  // v2'de büyüme maliyeti zar çekmez: ad, renk ve bayrak akışı sınır
+  // kuralından bağımsız kalır (şekil ayarı sonraki ülkelerin adını kaydırmasın).
+  const shape = version >= 2 ? shapeKit(world, `${seed}-shape`) : null;
+  /** v1: hedef kümenin maliyeti + ana zar; v2: kenar maliyeti, zarsız. */
+  const growCost = (jitter) => (shape
+    ? { edgeCost: shape.edgeCost }
+    : { stepCost: (province) => province.moveCost + rng.range(0, jitter) });
   // Earth: büyük güç bölgenin ortasından değil rolünün gerçek yerinden büyür
   // (denizci imparatorluk İngiltere, kuzey imparatorluğu Moskova...). Prosedürel
   // dünyada rol çapası yoktur, davranış aynıdır.
@@ -231,7 +255,7 @@ export function generateNations(world, options = {}) {
   const growHome = (spec, seedProvince, nationId) => {
     const { assignment } = growRegions(graph, [seedProvince], {
       canEnter: (province) => province.owner === -1 && zoneAllowed(province, spec),
-      stepCost: (province) => province.moveCost + rng.range(0, 2.2),
+      ...growCost(2.2),
       budget: () => spec.provinces,
     });
     for (const [province] of assignment) claimCluster(province, nationId, true);
@@ -266,7 +290,7 @@ export function generateNations(world, options = {}) {
         const { assignment } = growRegions(graph, [pool[0]], {
           canEnter: (province) => province.owner === -1
             && province.zone === spec.colony.zone,
-          stepCost: (province) => province.moveCost + rng.range(0, 1.4),
+          ...growCost(1.4),
           budget: () => target,
         });
         for (const [province] of assignment) claimCluster(province, id, false);
@@ -285,9 +309,10 @@ export function generateNations(world, options = {}) {
   }
 
   const greatPowers = nations.length;
-  fillRemaining(world, nations, rng, { graph, makeNation, claimCluster });
+  fillRemaining(world, nations, rng, { graph, makeNation, claimCluster, growCost, shape });
   // Seçim yoksa hiç zar çekilmez: varsayılan dünya bit bit aynı kalır.
-  if (total != null) fitNationTotal(world, nations, total, greatPowers, rng, { graph, makeNation, claimCluster });
+  if (total != null) fitNationTotal(world, nations, total, greatPowers, rng, { graph, makeNation, claimCluster, growCost });
+  if (shape) shape.smooth(nations, claimCluster);
   // Ana halk ve imparatorlukların alt halkları (redesign D3). İkisi de ana zar
   // akışından çekmez: ad, renk ve sınır aşağıdaki geçişlerde bit bit aynı kalır.
   assignPrimaryCultures(world, nations);
@@ -297,6 +322,12 @@ export function generateNations(world, options = {}) {
   // paylaştığı imparatorlukta (ve diasporanın değdiği yarı yarıya devlette)
   // en büyük halk değişebilir. Kural geçişten SONRA da doğru kalsın.
   assignPrimaryCultures(world, nations, { settle: true });
+  // Etnik mozaik (cultureGen ≥ 2): kardeş halklar ve imparatorluk cepleri.
+  // Kendi zar dalı; ad, renk ve sınır yukarıdaki gibi bit bit aynı kalır.
+  if ((world.genOptions?.cultureGen ?? 1) >= 2) {
+    world.mosaicPeoples = mosaicAfterNations(world, nations, makeRng(`${world.seed}-mosaic-nations`),
+      () => assignPrimaryCultures(world, nations, { settle: true }));
+  }
 
   // Oyuncunun başlangıç devleti TEK PARÇA olmalı. Arketip planının amiral
   // gemisi (denizaşırı kolonili imparatorluk) hep 0 numaraya doğar ve
@@ -531,7 +562,7 @@ function pickContiguousPlayer(world, nations) {
   return best;
 }
 
-function fillRemaining(world, nations, rng, { graph, makeNation, claimCluster }) {
+function fillRemaining(world, nations, rng, { graph, makeNation, claimCluster, growCost, shape }) {
   const provinces = world.provinces;
   const free = provinces.filter((p) => p.owner === -1);
   if (!free.length) return;
@@ -611,7 +642,7 @@ function fillRemaining(world, nations, rng, { graph, makeNation, claimCluster })
       Math.round(cluster.length / target),
       Math.ceil(cluster.length / FILL_MAX),
     );
-    const seeds = pickSpreadSeeds(world, cluster, states);
+    const seeds = shape ? shape.centerSeeds(cluster, pickSpreadSeeds(world, cluster, states)) : pickSpreadSeeds(world, cluster, states);
     const inCluster = new Set(cluster);
     // Kota şart: yayılma maliyet tabanlı olduğu için ova üzerindeki tohum
     // dağ üzerindekinin iki katını yutuyordu (ölçüldü: 8 devletlik kümede biri
@@ -624,7 +655,7 @@ function fillRemaining(world, nations, rng, { graph, makeNation, claimCluster })
     const quota = Math.ceil(cluster.length / states) + 2;
     const { assignment } = growRegions(graph, seeds, {
       canEnter: (p) => p.owner === -1 && inCluster.has(p),
-      stepCost: (p) => p.moveCost + rng.range(0, 2.0),
+      ...growCost(2.0),
       budget: () => quota,
     });
     const role = (zone && FILL_ROLE[zone]) ?? FILL_ROLE_ISLAND;
@@ -672,12 +703,12 @@ function fillRemaining(world, nations, rng, { graph, makeNation, claimCluster })
       for (const part of unownedParts(cluster, graph)) {
         if (part.length < FILL_SPLIT_MIN) continue;
         const k = Math.max(1, Math.round(part.length / target), Math.ceil(part.length / FILL_MAX));
-        const partSeeds = pickSpreadSeeds(world, part, k);
+        const partSeeds = shape ? shape.centerSeeds(part, pickSpreadSeeds(world, part, k)) : pickSpreadSeeds(world, part, k);
         const inPart = new Set(part);
         const partQuota = Math.ceil(part.length / k) + 2;
         const grown = growRegions(graph, partSeeds, {
           canEnter: (p) => p.owner === -1 && inPart.has(p),
-          stepCost: (p) => p.moveCost + rng.range(0, 2.0),
+          ...growCost(2.0),
           budget: () => partQuota,
         });
         const first = born.length;
@@ -809,7 +840,7 @@ function largestCore(list, id, graph) {
  * güçler indirimli sayılır: önce doldurma devletleri parçalansın.
  * @returns {boolean} bölünecek ülke bulundu mu
  */
-function splitLargest(world, nations, held, greatPowers, rng, { graph, makeNation, claimCluster }) {
+function splitLargest(world, nations, held, greatPowers, rng, { graph, makeNation, claimCluster, growCost }) {
   let chosen = null;
   let score = 0;
   for (const [id, list] of held) {
@@ -826,7 +857,7 @@ function splitLargest(world, nations, held, greatPowers, rng, { graph, makeNatio
   const inCore = new Set(core);
   const { assignment } = growRegions(graph, seeds, {
     canEnter: (province) => inCore.has(province),
-    stepCost: (province) => province.moveCost + rng.range(0, 2.0),
+    ...growCost(2.0),
     budget: () => Math.ceil(core.length / 2) + 1,
   });
   const role = FILL_ROLE[seeds[1].zone] ?? FILL_ROLE_ISLAND;
@@ -950,4 +981,186 @@ function computeStats(world, nations) {
   for (const province of world.provinces ?? []) {
     if (province.owner >= 0) nations[province.owner].provinces++;
   }
+}
+
+/**
+ * v2 şekil kuralının sabitleri. Ölçü: scripts/audit/nation-shape-audit.mjs
+ * (--gen=1 ile v1'in aynı tohumdaki karşılığı).
+ */
+const SHAPE = {
+  // Province başına SABİT gürültü (kenar başına değil): sınır cetvel gibi düz
+  // çıkmasın ama aynı province her yönden aynı pahalı görünsün.
+  jitter: 0.9,
+  // Ortak kenarın tamamı büyük nehir / sırt ise eklenen bedel (adım ~1).
+  river: 2.6,
+  ridge: 2.2,
+  // moveCost'un uzaklığa çarpan payı: dağ pahalı, ova ucuz.
+  terrain: 0.35,
+  // Engelin öbür yanındaki komşu düzeltmede bu kadar az çeker.
+  barrierPull: 0.7,
+  // Düzeltmenin bir ülkeye kazandırıp kaybettirebileceği pay: boy bandı kaymasın.
+  smoothShare: 0.12,
+};
+
+/**
+ * v2 ŞEKİL KURALI. v1 sınırları üç yerden çirkinleşiyordu (ölçüldü, 5 tohum
+ * 160x96): (1) moveCost adımı uzaklığı bilmiyordu, küçük province'ler
+ * boyunca dil uzuyordu; (2) doldurma tohumları kümenin UÇLARINDAN seçiliyordu
+ * (en uzak nokta): başkent kenarda, bölge kenardan yayılıyordu; (3) artık en
+ * küçük komşuya gidiyordu, şekle bakmadan. Kural üç parçadır: uzaklık tabanlı
+ * adım + nehir/sırt bedeli, Lloyd ile ortalanmış tohum, boy payı sınırlı
+ * kol/cep düzeltmesi. Tek zar akışı `${seed}-shape`, yalnız burada.
+ */
+function shapeKit(world, seed) {
+  const provinces = world.provinces;
+  const P = provinces.length;
+  const noiseRng = makeRng(seed);
+  const noise = provinces.map(() => noiseRng());
+  const flow = riverFlowTable(world);
+  const ridge = ridgeTable(world);
+  const shared = new Map();
+  for (const tile of world.tiles) {
+    const a = tile.provinceId;
+    if (!(a >= 0)) continue;
+    for (let d = 0; d < 6; d++) {
+      const n = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
+      const b = n?.provinceId;
+      if (!(b >= 0) || b === a) continue;
+      let e = shared.get(a * P + b);
+      if (!e) {
+        e = { edges: 0, river: 0, ridge: 0 };
+        shared.set(a * P + b, e);
+      }
+      e.edges++;
+      const f = riverBetween(world, flow, tile, n);
+      if (f > 0) e.river += 0.5 + 0.5 * f;
+      const c = edgeValue(world, ridge, tile, n);
+      if (c > 0) e.ridge += 0.4 + 0.6 * c;
+    }
+  }
+  const dist = (a, b) => world.wrapDistance(a.center.q, a.center.r, b.center.q, b.center.r);
+  let stepSum = 0;
+  let stepN = 0;
+  for (const p of provinces) {
+    for (const i of p.neighbors) {
+      stepSum += dist(p, provinces[i]);
+      stepN++;
+    }
+  }
+  const step = Math.max(1, stepSum / Math.max(1, stepN));
+  const barrierOf = (a, b) => {
+    const e = shared.get(a.id * P + b.id);
+    return e ? (SHAPE.river * e.river + SHAPE.ridge * e.ridge) / e.edges : 0;
+  };
+  /** Düzeltmede komşunun çekimi: ortak kenar, engelli kısmı kırpılmış. */
+  const pullOf = (a, b) => {
+    const e = shared.get(a.id * P + b.id);
+    if (!e) return 1;
+    return Math.max(0.2 * e.edges, e.edges - SHAPE.barrierPull * (e.river + e.ridge));
+  };
+
+  const edgeCost = (from, to) => (dist(from, to) / step) * (1 + SHAPE.terrain * (to.moveCost - 1))
+    + SHAPE.jitter * noise[to.id] + barrierOf(from, to);
+
+  /** Lloyd: tohumu kendi Voronoi hücresinin medoidine taşır (en çok 3 tur). */
+  const centerSeeds = (cluster, seeds) => {
+    let current = seeds.slice();
+    for (let round = 0; round < 3; round++) {
+      const groups = current.map(() => []);
+      for (const p of cluster) {
+        let best = 0;
+        let bestD = Infinity;
+        current.forEach((s, i) => {
+          const d = dist(s, p);
+          if (d < bestD) { bestD = d; best = i; }
+        });
+        groups[best].push(p);
+      }
+      const next = groups.map((group, i) => {
+        if (!group.length) return current[i];
+        let pick = group[0];
+        let pickSum = Infinity;
+        for (const p of group) {
+          let sum = 0;
+          for (const o of group) sum += dist(p, o);
+          if (sum < pickSum || (sum === pickSum && p.id < pick.id)) { pickSum = sum; pick = p; }
+        }
+        return pick;
+      });
+      if (next.every((s, i) => s === current[i])) break;
+      current = next;
+    }
+    return current;
+  };
+
+  /**
+   * Kol ve cep düzeltmesi: sınırının çoğu başka bir ülkeye bakan çekirdek
+   * province o ülkeye geçer. Başkent kalır, ülke bölünmez, sömürge oynamaz,
+   * her ülke en çok boyunun SHAPE.smoothShare'i kadar kazanır/kaybeder.
+   */
+  const smooth = (nations, claimCluster) => {
+    const capitals = new Set();
+    for (const nation of nations) {
+      const tile = nation.capital && world.get(nation.capital.q, nation.capital.r);
+      if (tile?.provinceId >= 0) capitals.add(tile.provinceId);
+    }
+    const size = new Map();
+    for (const p of provinces) if (p.owner >= 0) size.set(p.owner, (size.get(p.owner) ?? 0) + 1);
+    const room = new Map([...size].map(([id, n]) => [id, Math.max(2, Math.round(n * SHAPE.smoothShare))]));
+    const delta = new Map();
+    const joined = (p, owner) => {
+      const near = p.neighbors.map((i) => provinces[i]).filter((q) => q.owner === owner);
+      if (near.length <= 1) return true;
+      const want = new Set(near);
+      const seen = new Set([p, near[0]]);
+      const queue = [near[0]];
+      want.delete(near[0]);
+      for (let h = 0; h < queue.length && want.size && seen.size < 600; h++) {
+        for (const i of queue[h].neighbors) {
+          const q = provinces[i];
+          if (q.owner !== owner || seen.has(q)) continue;
+          seen.add(q);
+          want.delete(q);
+          queue.push(q);
+        }
+      }
+      return want.size === 0;
+    };
+    for (let pass = 0; pass < 6; pass++) {
+      let moved = 0;
+      for (const p of provinces) {
+        const a = p.owner;
+        if (a < 0 || p.coreOf !== a || capitals.has(p.id)) continue;
+        if ((size.get(a) ?? 0) <= 2 || (delta.get(a) ?? 0) <= -room.get(a)) continue;
+        const pull = new Map();
+        let total = 0;
+        for (const i of p.neighbors) {
+          const q = provinces[i];
+          if (q.owner < 0) continue;
+          const w = pullOf(p, q);
+          pull.set(q.owner, (pull.get(q.owner) ?? 0) + w);
+          total += w;
+        }
+        const own = pull.get(a) ?? 0;
+        let b = -1;
+        let bw = 0;
+        for (const [owner, w] of pull) {
+          if (owner === a) continue;
+          if (w > bw || (w === bw && owner < b)) { b = owner; bw = w; }
+        }
+        if (b < 0 || bw < 2 * own || bw < 0.5 * total) continue;
+        if ((delta.get(b) ?? 0) >= room.get(b)) continue;
+        if (!joined(p, a)) continue;
+        claimCluster(p, b, true);
+        size.set(a, size.get(a) - 1);
+        size.set(b, size.get(b) + 1);
+        delta.set(a, (delta.get(a) ?? 0) - 1);
+        delta.set(b, (delta.get(b) ?? 0) + 1);
+        moved++;
+      }
+      if (!moved) break;
+    }
+  };
+
+  return { edgeCost, centerSeeds, smooth };
 }

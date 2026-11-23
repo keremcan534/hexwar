@@ -572,18 +572,6 @@ body.screen-open:has(#screen[data-screen="dossier"]) .notify-stack {
   .screen[data-screen='dossier'] .dsr-sec .k-btn, .screen[data-screen='dossier'] .dsr-acts button { min-height: 0; padding-top: 3px; padding-bottom: 3px; }
 }
 
-/* Donanma: amiraller bölümü (navyDock.admiralsHtml). */
-.nd-adms { padding: 6px 12px 8px; border-bottom: 1px solid var(--line); }
-.nd-adms-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
-.nd-adms-head .nd-sec small { color: var(--text-mute); font-weight: 600; letter-spacing: 0; }
-.nd-adm { display: grid; grid-template-columns: 34px minmax(0, 1fr) 130px; align-items: center; gap: 8px; padding: 3px 0; }
-.nd-adm-face { width: 34px; height: 34px; overflow: hidden; border-radius: 2px; box-shadow: 0 0 0 1px #050708, 0 0 0 2px rgba(214, 186, 120, 0.4); }
-.nd-adm-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.nd-adm-id { display: grid; min-width: 0; }
-.nd-adm-id b { overflow: hidden; color: var(--text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.nd-adm-id small { overflow: hidden; color: var(--text-mute); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.nd-adm-sea { min-width: 0; height: 26px; padding: 0 6px; border: 1px solid rgba(214, 186, 120, 0.45); border-radius: 2px; background: #0e1417; color: var(--text); font: 600 12px var(--font-ui); }
-.nd-adm-empty { margin: 2px 0 0; color: var(--text-mute); font-size: 12px; }
 /* Donanma paneli açıkken küçük harita gizlenir: panel aynı köşeyi paylaşıyordu ve 864 px
    boyda 350 px'e sıkışıp kendi içinde kayıyordu (Kerem: "daracık kutuda kaydırma"). */
 body.navy-open .minimap { display: none; }
@@ -591,15 +579,11 @@ body.navy-open .minimap { display: none; }
 body.navy-open:not(.screen-open) .notify-stack { bottom: calc(var(--safe-bottom) + var(--sp-3) + var(--mm-h) + var(--sp-2)); top: auto; right: calc(var(--sp-3) * 2 + min(432px, calc(100vw / var(--ui) - var(--sp-3) * 2))); }
 @media (max-height: 900px) {
   .navy-dock .nd-sec { margin-top: 0; }
-  .navy-dock .nd-adm { padding: 1px 0; }
-  .navy-dock .nd-adm-face { width: 28px; height: 28px; }
-  .navy-dock .nd-adms { padding-top: 4px; padding-bottom: 5px; }
 }
 @media (max-height: 900px) {
   /* AUTO notu başlıktaki AUTO ile aynı şeyi söylüyordu; satırlar sıkılaşır. */
   .navy-dock .nd-train.dim { display: none; }
   .navy-dock .nd-frow { padding-top: 1px; padding-bottom: 1px; }
-  .navy-dock .nd-build { padding-top: 3px; padding-bottom: 3px; }
 }
 
 /* MUHAREBE PENCERESİ (HOI4 düzeni, Kerem'in örneği): üstte iki amblem ve başlık, arazi
@@ -1115,4 +1099,544 @@ select option { background: #11181b; color: #e8dcc0; }
   .ec-chainrow .k-pill { padding-top: 1px; padding-bottom: 1px; }
   .ec-chainrow .k-pill b { font-size: 14px; }
   .k-kpi-body em { display: none; }
+}
+
+/* --- PARTİ TONU (ui/partyTint.js; Kerem 2026-11-23: "partiye göre arayüzün renk
+   teması hafiften değişebilir") ---------------------------------------------
+   İktidarın rengi dokunun ÜSTÜNE yarı saydam ışık olarak biner, malzemeyi değiştirmez.
+   Katman z-index −1: çubuk kendi yığın bağlamını kurar (position + z-index), ışık
+   arka planın üstünde ama sayıların altında kalır; yazı renk almaz. Renkler satır içi
+   değişkendir, ayar kapalıyken tanımsızdır ve hiçbir şey çizilmez. */
+.topbar::before,
+.tab-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--party-wash, none);
+}
+.tab-bar::before { background: var(--party-floor, none); }
+/* Arma elması partinin taşı olur; pirinç kasnak kalır. */
+:root[data-party] .topbar::after {
+  background: var(--party-gem);
+  box-shadow: 0 0 0 1px #050708, 0 0 0 2px rgba(214, 186, 120, 0.6);
+}
+/* Ekran başlık teli: ortada pirinç yerine partinin rengi, uçlarda yine kaybolur. */
+:root[data-party] .screen-head::after {
+  background: linear-gradient(90deg,
+    var(--party-line), var(--party-soft) 40%, var(--party-soft) 60%, transparent);
+}
+/* Panel başlıklarının elması ve kıl çizgisi de partinin taşını taşır: ton bütün ekranlarda
+   aynı dilden okunur (üst çubuğun arma elmasıyla eş). */
+:root[data-party] .k-head::before { background: var(--party-gem); }
+:root[data-party] .k-head::after {
+  background: linear-gradient(90deg, transparent, var(--party-line) 12%,
+    var(--party-soft) 50%, var(--party-line) 88%, transparent);
+}
+
+/* --- SANCAK (Kerem 2026-11-23: "sol üstteki bayrağın epey büyük olmasını ve özgürce
+   dalgalanmasını istemiştim hep") ------------------------------------------------
+   Asılı kalkan plakası kalktı: bayrak bir gönderdedir, kırpılmaz, saçağı ve sarkması
+   çubuğun altına, sekme şeridinin sol boşluğuna taşar (flagWave 'banner' kipi; tuval
+   kabından büyüktür). Sekme şeridi ve künye yazısı bezin genişliği kadar sağdan başlar.
+   Ölçüler değişkendir, kırılımlar yalnız onları değiştirir. Dar pencerede künyedeki
+   sayılar (state, şehir) gizlenir (1920'de bile kartuşa biniyordu; ulus ekranında var); savaş/barış durumu her genişlikte kalır. */
+:root { --flag-w: 168px; --flag-h: 112px; --flag-x: 15px; --flag-y: 17px; }
+@media (max-width: 1899px) { :root { --flag-w: 144px; --flag-h: 96px; } }
+@media (max-width: 1599px) { :root { --flag-w: 120px; --flag-h: 80px; } }
+@media (max-width: 1365px) { :root { --flag-w: 104px; --flag-h: 69px; } }
+
+.nation-badge { padding-left: calc(var(--flag-x) + var(--flag-w) + 16px); }
+.tab-bar { padding-left: calc(var(--flag-x) + var(--flag-w) + 22px); }
+@media (max-width: 2099px) { .nation-text .nt-counts { display: none; } }
+.nation-crest {
+  display: block;
+  width: calc(var(--flag-x) + var(--flag-w) + 12px);
+  height: calc(100% + var(--tabbar-height) - 4px);
+  padding: 0;
+  filter: none;
+}
+/* Gönder: pirinç silindir (yandan ışık), tepe süsü mızrak ucu. */
+.nation-crest::before,
+.nation-crest::after { clip-path: none; inset: auto; }
+.nation-crest::before {
+  left: 10px;
+  top: 18px;
+  bottom: 0;
+  width: 5px;
+  border-radius: 2.5px;
+  background: linear-gradient(90deg, #2e2412 0%, #a5844c 28%, #f2deaa 44%, #a5844c 64%, #241c0e 100%);
+  box-shadow: 2px 3px 4px rgba(0, 0, 0, 0.55);
+}
+.nation-crest::after {
+  left: 3.5px;
+  top: 1px;
+  z-index: 2;
+  width: 18px;
+  height: 21px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 16'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%236e5a32'/%3E%3Cstop offset='.45' stop-color='%23f4e2b0'/%3E%3Cstop offset='1' stop-color='%235a4824'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M7 .4C9.6 3.4 10.4 6.6 7 10.4 3.6 6.6 4.4 3.4 7 .4Z' fill='url(%23g)' stroke='%23140f06' stroke-width='.6'/%3E%3Crect x='4.4' y='10.6' width='5.2' height='2.6' rx='1.1' fill='url(%23g)' stroke='%23140f06' stroke-width='.6'/%3E%3Ccircle cx='7' cy='14.6' r='1.3' fill='url(%23g)' stroke='%23140f06' stroke-width='.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7));
+}
+.nation-badge:hover .nation-crest::before { filter: brightness(1.18); }
+.nation-crest .nation-flag {
+  position: absolute;
+  left: var(--flag-x);
+  top: var(--flag-y);
+  width: var(--flag-w);
+  height: var(--flag-h);
+  box-shadow: none;
+  /* Bezin gölgesi kumaşla birlikte dalgalanır (alfa izler); çerçeve gölgesi yok. */
+  filter: drop-shadow(3px 5px 5px rgba(0, 0, 0, 0.5));
+}
+.nation-crest .nation-flag .flag-canvas { display: block; }
+
+/* --- SAVAŞ SANCAKLARI (ui/warBanners.js) -------------------------------------
+   Sekme şeridinin ALTINDAN iner: katman başlığın bir altında, haritanın ve ekranların
+   üstünde. Tıklamayı hiçbir zaman tutmaz. */
+.war-banners {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-topbar) - 1);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.war-banners.is-shown { opacity: 1; }
+.war-banners.is-leaving { opacity: 0; transition-duration: 0.6s; }
+.war-banners canvas {
+  position: absolute;
+  filter: drop-shadow(6px 10px 10px rgba(0, 0, 0, 0.55));
+}
+/* DONANMA FİLOLARI (2026-11-23 rework, ui/navyDock.js; styles.css §58'in
+   devamı, skin katmanında: k-seg/k-btn ölçüleri skin'den gelir ve tabanı ezer). Panel tek kaydırma alanıdır
+   (.nd-body; yalnız kısa ekranda kayar), içinde kayan kutu yok. Sıra: savaş
+   şeridi (iki kıyının ablukası) → FİLOLAR (kart başına filo: ad, güç, hâl,
+   emir, amiral, böl/birleştir) → DENİZLER (tek satır; tık kartı açar) →
+   yollar/tümenler/denizaltı → tersane → son olay. */
+.nd-sec-head { display: flex; align-items: center; gap: 6px; min-height: 24px; margin-bottom: 3px; }
+.nd-sec-head > .nd-sec { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Savaş şeridinin oranı ve iki kıyı satırı. */
+.nd-ratio { flex: none; margin-left: auto; font-size: 12.5px; font-weight: 650; font-variant-numeric: tabular-nums; cursor: var(--cur-default); }
+.nd-coasts { display: flex; flex-wrap: wrap; gap: 2px 12px; min-width: 0; }
+.nd-coast {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 12.5px/18px var(--font-ui);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: var(--cur-default);
+}
+button.nd-coast { cursor: var(--cur-pointer); }
+button.nd-coast:hover { text-decoration: underline; }
+
+/* Seçili filonun ipucu şeridi: sağ tık emri buradan öğrenilir. */
+.nd-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 5px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 227, 154, 0.45);
+  border-radius: 3px;
+  background: rgba(255, 214, 120, 0.08);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+.nd-hint b { color: #ffe39a; font-weight: 600; }
+.nd-hint .glyph { flex: none; color: #ffe39a; }
+
+/* Filo kartı: solda emrin rengiyle şerit (Auto pirinç, deniz yeşil, liman gri). */
+.nd-fcard {
+  --nd-mode: #dcc07a;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 4px;
+  padding: 4px 8px 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.16);
+}
+.nd-fcard::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--nd-mode);
+}
+.nd-fcard.sea { --nd-mode: #8fd39a; }
+.nd-fcard.port { --nd-mode: #9aa7b1; }
+.nd-fcard:hover { border-color: rgba(214, 186, 120, 0.35); }
+.nd-fcard.selected { border-color: rgba(255, 227, 154, 0.75); background: rgba(255, 214, 120, 0.07); box-shadow: 0 0 10px rgba(255, 214, 120, 0.18); }
+.nd-fc-head { display: flex; align-items: center; gap: 8px; min-width: 0; height: 22px; }
+.nd-fc-name {
+  flex: none;
+  max-width: 46%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 15px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: var(--cur-pointer);
+}
+.nd-fc-name:hover, .nd-fcard.selected .nd-fc-name { color: #ffe39a; }
+.nd-fc-ships { flex: 1; min-width: 0; overflow: hidden; color: var(--text-mute); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; cursor: var(--cur-default); }
+.nd-fc-ships b { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; }
+.nd-fc-str { display: flex; flex: none; align-items: center; gap: 5px; cursor: var(--cur-default); }
+.nd-fc-str .nd-sbar { width: 56px; }
+.nd-fc-str b { min-width: 30px; color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
+.nd-fc-where {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 22px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: var(--cur-default);
+}
+.nd-fc-where > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nd-fc-where.good > span:not(.dim):not(.warn):not(.bad) { color: #b9d68a; }
+.nd-fc-where.warn > span:not(.dim):not(.bad) { color: #e8bd66; }
+.nd-fc-where.bad > span:not(.dim) { color: #ff8f6e; }
+.nd-fc-where .nd-glyph { flex: none; width: 20px; color: var(--text-mute); font-style: normal; text-align: center; }
+.nd-fc-where .nd-glyph .art { width: 20px; height: 18px; }
+.nd-fc-where .nd-place { flex: none; max-width: 150px; font-size: 13.5px; }
+.nd-fc-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; min-height: 22px; }
+.nd-modes.k-seg { display: flex; flex: none; flex-wrap: nowrap; gap: 0; }
+.nd-modes.k-seg > .k-seg-b { border-radius: 0; line-height: 20px; }
+.nd-modes.k-seg > .k-seg-b:first-child { border-radius: 3px 0 0 3px; }
+.nd-modes.k-seg > .k-seg-b:last-child { border-radius: 0 3px 3px 0; grid-column: auto; }
+.nd-modes .k-seg-b { height: 22px; padding: 0 8px; font-size: 12px; white-space: nowrap; }
+.nd-modes .k-seg-b.on { max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+.nd-fface { flex: none; width: 22px; height: 22px; overflow: hidden; border-radius: 2px; box-shadow: 0 0 0 1px rgba(214, 186, 120, 0.4); cursor: var(--cur-default); }
+.nd-fface img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.nd-sel {
+  height: 22px;
+  max-width: 104px;
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text-dim);
+  font: 12px var(--font-ui);
+  cursor: var(--cur-pointer);
+}
+.nd-sel:hover { border-color: rgba(214, 186, 120, 0.6); color: var(--text); }
+.nd-fc-ctl .nd-sel[data-nd-merge] { max-width: 70px; }
+.nd-fc-ctl .nd-sel[data-nd-fadm] { max-width: 92px; }
+/* Filo bölümü pencereye sığsın: iki filo + iki deniz 1536×864'te kaymadan. */
+.navy-dock .nd-body > section { padding-top: 5px; padding-bottom: 5px; }
+.nd-fc-ctl .k-btn.xs { min-height: 22px; }
+.nd-picker { display: flex; align-items: center; gap: 6px; color: #ffe39a; font-size: 12px; }
+.nd-picker .nd-sel { max-width: 200px; }
+
+/* DENİZLER: satır başına tek düğme, 26 px. */
+.nd-sea {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 26px;
+  padding: 0 4px 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--text-dim);
+  font: 12.5px var(--font-ui);
+  text-align: left;
+  cursor: var(--cur-pointer);
+  position: relative;
+}
+.nd-sea::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--nd-tone, #5b6f7f);
+}
+.nd-sea.ours { --nd-tone: #6fbf7c; }
+.nd-sea.enemy { --nd-tone: #d8644c; }
+.nd-sea.contested { --nd-tone: #e0a848; }
+.nd-sea:hover, .nd-sea.focus { background-color: rgba(186, 160, 100, 0.07); }
+/* Ad ve etiketler solda; etki kalan yerde kesilir (tamamı kartta). */
+.nd-sea-name { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--text); font-family: var(--font-display); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.nd-sea > .nd-tag { flex: none; }
+.nd-sea-fx { flex: 1 1 0; min-width: 0; overflow: hidden; font-size: 12px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.nd-sea .nd-ships { margin-left: 0; }
+.nd-sea .nd-ctl { flex: none; width: 56px; }
+.nd-sea .nd-ctlv { flex: none; width: 34px; }
+.nd-more-seas {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 24px;
+  padding: 0 6px 0 10px;
+  border: 0;
+  background: none;
+  color: var(--text-mute);
+  font: 12.5px var(--font-ui);
+  text-align: left;
+  cursor: var(--cur-pointer);
+}
+.nd-more-seas i { font-style: normal; }
+.nd-more-seas:hover { color: var(--text); }
+
+/* Tersane satırı: yeni gemi her zaman görünür; gövdeler (hurda) katlıdır ama
+   başlığı "scrap" der (Kerem: gemi silmek kapalı başlığın altında bulunmuyordu). */
+.nd-yardline { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 5px 12px !important; border-bottom: 1px solid var(--line); }
+.nd-yardline > .k { display: flex; align-items: center; gap: 3px; color: var(--text-mute); font-size: 12.5px; }
+.nd-yardline > .k .art { width: 22px; height: 18px; }
+.nd-yardline .nd-train { padding: 0; font-size: 12px; }
+.nd-yard { flex: none; padding: 2px 0 4px; border-bottom: 1px solid var(--line); }
+.nd-yard-toggle { display: inline-flex; align-items: center; gap: 2px; padding: 0 2px; border: 0; background: none; color: var(--text-mute); font: 12px var(--font-ui); cursor: var(--cur-pointer); }
+.nd-yard-toggle:hover { color: var(--text); }
+.nd-yard-toggle .glyph { width: 12px; height: 12px; }
+
+/* DENİZ KARTI: gövdenin yerine; Send satırları ve Auto ağırlığı. */
+.nd-seacard .nd-card-title { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.nd-seacard .nd-card-verdict { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.nd-seacard .nd-card-verdict.warn { background: rgba(224, 168, 72, 0.1); color: #e8bd66; }
+.nd-seacard .nd-card-verdict .nd-ctl { width: 70%; }
+.nd-card-list { flex: none; margin: 4px 0; padding: 0 12px 0 28px; color: var(--text-dim); font-size: 12.5px; line-height: 1.45; }
+.nd-card-list li.good { color: #b9d68a; }
+.nd-card-list li.bad { color: #ff8f6e; }
+.nd-card-list li.warn { color: #e8bd66; }
+.nd-card-list li.dim { color: var(--text-faint); }
+.nd-send { display: flex; align-items: center; gap: 8px; min-height: 26px; font-size: 12.5px; }
+.nd-send > .k-btn { flex: none; min-width: 132px; }
+.nd-send > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nd-seacard .nd-pri { display: inline-flex; margin-top: 3px; }
+
+/* --- ÇERÇEVE ARMALARI (Kerem 2026-11-23: "arayüz karelerinin üstünde kartal olur,
+   yanlara doğru süsler olur ... süsleyelim etrafı"; URETIM-LISTESI §24-25,
+   assets/ui/crest/) --------------------------------------------------------------
+   Arma yalnız ÜSTÜ boş olan yüzen panellere oturur: üst kenarın ortasında, yarısı
+   paneldin dışına, haritanın üstüne taşar. Yönetim penceresinin üstü sekme şeridine
+   yapışık olduğu için ona arma değil dört köşe süsü konur. Hiçbiri tıklamayı tutmaz
+   ve hiçbir denetimin üstüne binmez (layout-probe); konu armayı seçer: harita ve olay
+   kartı kartal, savaş kılıç, donanma çapa. */
+.minimap::before,
+.war-dock::before,
+.navy-dock::before,
+.event-card.ev::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  z-index: 4;
+  height: 40px;
+  aspect-ratio: 400 / 143;
+  transform: translate(-50%, -56%);
+  background: url("../assets/ui/crest/eagle.webp") center / contain no-repeat;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.7));
+  pointer-events: none;
+}
+.war-dock::before {
+  height: 36px;
+  aspect-ratio: 400 / 155;
+  transform: translate(-50%, -50%);
+  background-image: url("../assets/ui/crest/sabres.webp");
+}
+.navy-dock::before {
+  height: 36px;
+  aspect-ratio: 400 / 162;
+  transform: translate(-50%, -50%);
+  background-image: url("../assets/ui/crest/anchor.webp");
+}
+.navy-dock { overflow: visible; }
+.event-card.ev::before { height: 58px; transform: translate(-50%, -62%); }
+/* Kart taşan armayı kesmesin; sahne resmi köşesini kendi yuvarlar. */
+.event-card.ev { position: relative; overflow: visible; }
+.event-card.ev .ev-scene { border-radius: 3px 3px 0 0; }
+.event-card.ev h3::after {
+  content: "";
+  display: block;
+  width: min(70%, 320px);
+  height: 12px;
+  margin: 8px 0 0;
+  background: url("../assets/ui/crest/divider.webp") left center / contain no-repeat;
+  pointer-events: none;
+}
+/* Yönetim penceresinin dört köşesi: aynı köşe süsünün aynadaki üç kopyası tek katmanda. */
+#screen::after {
+  content: "";
+  position: absolute;
+  inset: -9px;
+  z-index: 6;
+  pointer-events: none;
+  --cs: 44px;
+  background:
+    url("../assets/ui/crest/corner.webp") left top / var(--cs) no-repeat,
+    url("../assets/ui/crest/corner-tr.webp") right top / var(--cs) no-repeat,
+    url("../assets/ui/crest/corner-bl.webp") left bottom / var(--cs) no-repeat,
+    url("../assets/ui/crest/corner-br.webp") right bottom / var(--cs) no-repeat;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.7));
+}
+@media (max-width: 1599px) {
+  .minimap::before { height: 34px; }
+  .war-dock::before, .navy-dock::before { height: 30px; }
+  #screen::after { --cs: 38px; inset: -8px; }
+}
+
+/* --- KOMUTAN ŞERİDİ: MALZEME (Kerem 2026-11-23: "alttaki general seçme yeri hâlâ paint
+   gibi duruyor") ------------------------------------------------------------------
+   Düz koyu kart + ince çizgi + gri bant + kesik çizgili kutu "web kartı" okunuyordu.
+   Kart artık arayüzün düğme malzemesinden bir resim çerçevesidir (dugme 9 dilim): portre
+   çerçevenin içine oturur, ad kazınmış pirinç plakadır, duruş bandı emayedir (saldırı
+   kızıl, savunma mavi, yedek basılı koyu; kat/ dokuları), tümen sayısı pirinç perçin.
+   Atama kartının "+"sı boş madalyonun ortasına kazınır (assets/ui/crest/keystone). */
+.cmd-card {
+  border: 0;
+  border-radius: 0;
+  border-image: var(--sk-dugme);
+  background: none;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.55);
+}
+.cmd-card:hover:not(:disabled) { border-image: var(--sk-dugme-ustunde); }
+.cmd-card.active {
+  border-image: var(--sk-dugme-secili);
+  box-shadow: 0 0 0 1px #050708, 0 4px 10px rgba(0, 0, 0, 0.6);
+}
+.cmd-card .cmd-portrait {
+  inset: 5px 5px 24px 5px;
+  box-shadow: inset 0 0 0 1px rgba(5, 7, 8, 0.9), inset 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+/* Fotoğraf çerçevenin camının ardında: hafif kenar kararması. */
+.cmd-card .cmd-portrait::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 35%, transparent 55%, rgba(0, 0, 0, 0.45));
+}
+.cmd-card .cmd-id {
+  left: 5px;
+  right: 5px;
+  bottom: 24px;
+  gap: 3px;
+  padding: 12px 2px 4px;
+  background: linear-gradient(180deg, transparent, rgba(5, 8, 10, 0.72) 55%, rgba(5, 8, 10, 0.88));
+}
+.cmd-card .cmd-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: #efe4c8;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px #000, 0 0 6px rgba(0, 0, 0, 0.9);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* Ad müze etiketi gibi yazılır (Kerem: plaka "düğme gibi, Paint'ten gibi"); altında
+   ayracın küçük kopyası adı yıldızlardan ayırır. */
+.cmd-card:not(.cmd-assign) .cmd-name::after {
+  content: "";
+  display: block;
+  width: 54px;
+  height: 5px;
+  margin: 2px auto 0;
+  background: url("../assets/ui/crest/divider.webp") center / contain no-repeat;
+  opacity: 0.9;
+}
+.cmd-band {
+  left: 5px;
+  right: 5px;
+  bottom: 5px;
+  height: 19px;
+  padding: 0 4px 2px;
+  border-top: 0;
+  background: none;
+  border-image: var(--sk-dugme-basili);
+}
+.cmd-card:not(.is-idle):not(.cmd-assign) .cmd-band {
+  border-image: url('../assets/ui/skin/kat/diplomacy.webp') 16 fill / 4px / 0 stretch;
+}
+.cmd-card.is-advancing .cmd-band {
+  border-image: url('../assets/ui/skin/kat/military.webp') 16 fill / 4px / 0 stretch;
+}
+.cmd-band .cmd-stance,
+.cmd-card.is-advancing .cmd-band .cmd-stance { color: #f6eedc; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.85); }
+.cmd-band .cmd-stance.is-reserve { color: #b4ad9c; }
+.cmd-band .cmd-size {
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: radial-gradient(circle at 35% 30%, #f6e2b0, #b08a48 55%, #5a4824);
+  box-shadow: 0 0 0 1px #140f06, 0 1px 2px rgba(0, 0, 0, 0.6);
+  color: #1b140a;
+  font-size: 10px;
+  line-height: 15px;
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.4);
+}
+.cmd-band .cmd-plan { left: 6px; right: 6px; bottom: 2px; }
+/* Yedekteki general sönük değil: fotoğrafı eskimiş, kart yine okunur. */
+.cmd-card.is-idle { opacity: 1; }
+.cmd-card.is-idle .cmd-portrait { filter: sepia(0.4) saturate(0.7) brightness(0.8); }
+.cmd-card .cmd-portrait.cmd-plus {
+  inset: 9px 7px 46px 7px;
+  margin: 0;
+  border: 0;
+  background: url('../assets/ui/crest/keystone.webp') center / contain no-repeat;
+  box-shadow: none;
+  color: #33270f;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.55);
+}
+.cmd-card .cmd-portrait.cmd-plus::after { display: none; }
+.cmd-assign .cmd-id { padding-top: 4px; }
+.cmd-assign .cmd-stars { color: #a9a290; }
+.cmd-assign:disabled .cmd-portrait.cmd-plus { filter: grayscale(0.5) brightness(0.7); }
+/* Tepsi: kartlar panelin malzemesinde, gömük bir yuvada durur (düz koyu kutu yerine). */
+.command-bar {
+  padding: 8px 10px;
+  border: 0;
+  border-image: url('../assets/ui/skin/cerceve.webp') 52 fill / 10px / 0 stretch;
+  background: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+/* Komuta tepsisinin arması: taçlı kalkan (kurmay), sekmesiz yüzen panellerdeki gibi
+   üst kenarın ortasında, haritaya taşar. Araç satırı açıksa onun üstüne oturur. */
+.command-dock::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  z-index: 4;
+  height: 32px;
+  aspect-ratio: 400 / 173;
+  transform: translate(-50%, -80%);
+  background: url("../assets/ui/crest/shield.webp") center / contain no-repeat;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.7));
+  pointer-events: none;
 }

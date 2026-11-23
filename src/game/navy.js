@@ -201,6 +201,8 @@ export function commissionShip(world, nation, { home, hp = 1, draws = [], turn =
     repairing: hp < RESUME_AT,
     draws,
   };
+  // Filosu olan ulusta yeni gövde ilk filoya katılır (denizaltı filosuzdur).
+  if (!sub && fleetsOf(nation)) ship.fleet = navy.fleets[0].id;
   navy.ships.push(ship);
   // DÜNYADA İLK: yeni sınıfın ilk gemisi bir kez, adıyla duyurulur (announce).
   world.navyFirsts ??= {};
@@ -344,6 +346,201 @@ export function resetZonePriorities(nation) {
   ensureNavy(nation).zones = {};
 }
 
+// ---------------------------------------------------------------- FİLOLAR ---
+
+/**
+ * FİLO — oyuncunun havuzdan ayırdığı gemi grubu, tek emirle (Kerem
+ * 2026-11-23: "gemi kısmı full rework"). Öncelik kademesi denizi TARTAR,
+ * gemiyi göndermez: barışta bir denize High vermek beş gemiden üçünü
+ * yolluyordu, savaşta Auto'nun seçtiği denizde düşman bizi %89 ablukaya
+ * alırken oyuncunun "filoyu oraya yolla" demesinin yolu yoktu (ölçüldü,
+ * NAVY1 1900, 1536×864). Emir üç kipten biridir:
+ *   auto — amirallik böler (öncelikler dahil, YZ'nin kuralının ta kendisi)
+ *   sea  — filonun bütün hazır gemileri o denize gider ve orayı tutar
+ *   port — limanda yedek (fleet in being)
+ * Ulusun filo listesi yoksa (YZ, eski kayıt, emir vermemiş oyuncu) bütün
+ * gemiler Auto'dur: dağıtım, zar ve kayıt bayt bayt eskisidir. Mikro yönetim
+ * filo sayısıyla büyümesin diye varsayılan tek filodur ve Auto'dadır; yeni
+ * gemi ilk filoya katılır (orders.js setFleetOrder emri yazar).
+ */
+export const FLEET_MODES = ['auto', 'sea', 'port'];
+const AUTO_ORDER = Object.freeze({ mode: 'auto', zone: null });
+export const RESERVE_FLEET_NAME = 'Home Fleet';
+const ORDINALS = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
+
+/** Ulusun filo listesi; hiç kurulmadıysa null (bütün gemiler Auto). */
+export function fleetsOf(nation) {
+  const fleets = nation?.navy?.fleets;
+  return Array.isArray(fleets) && fleets.length ? fleets : null;
+}
+
+/** Filo listesini kurar: ilk emirde bütün yüzey gemileri tek "Home Fleet"tedir. */
+export function ensureFleets(nation) {
+  const navy = ensureNavy(nation);
+  if (fleetsOf(nation)) return navy.fleets;
+  navy.fleets = [{ id: 1, name: RESERVE_FLEET_NAME, order: { ...AUTO_ORDER } }];
+  navy.nextFleet = 2;
+  for (const ship of surfaceOf(nation)) ship.fleet = 1;
+  return navy.fleets;
+}
+
+export function fleetById(nation, id) {
+  return fleetsOf(nation)?.find((fleet) => fleet.id === id) ?? null;
+}
+
+/** Geminin filosu; kimliği bilinmeyen gövde ilk filodadır (yedek). */
+export function fleetOfShip(nation, ship) {
+  const fleets = fleetsOf(nation);
+  if (!fleets || isSub(ship)) return null;
+  return fleets.find((fleet) => fleet.id === ship.fleet) ?? fleets[0];
+}
+
+/** Filonun yüzey gemileri. Filosuz ulusta kimlik ne olursa olsun bütün filo. */
+export function fleetShips(nation, fleetId) {
+  if (!fleetsOf(nation)) return surfaceOf(nation);
+  return surfaceOf(nation).filter((ship) => fleetOfShip(nation, ship)?.id === fleetId);
+}
+
+/** Geminin emri (filosunun emri; filosuz ulusta Auto). */
+export function shipOrder(nation, ship) {
+  return fleetOfShip(nation, ship)?.order ?? AUTO_ORDER;
+}
+
+/**
+ * Amiralliğin böldüğü gemiler. Filosuz ulusta bütün yüzey gemileri, aynı
+ * dizi: YZ'nin dağıtımı eskisiyle aynı nesneleri aynı sırayla görür.
+ */
+export function autoPool(nation) {
+  const ships = surfaceOf(nation);
+  if (!fleetsOf(nation)) return ships;
+  return ships.filter((ship) => shipOrder(nation, ship).mode === 'auto');
+}
+
+/** Filonun emri (veri). Ekran ve harita orders.setFleetOrder'dan geçer. */
+export function setFleetMission(nation, fleetId, mode, zone = null) {
+  const fleet = fleetById(nation, fleetId);
+  if (!fleet || !FLEET_MODES.includes(mode)) return false;
+  if (mode === 'sea' && !(Number.isInteger(zone) && zone >= 0)) return false;
+  fleet.order = { mode, zone: mode === 'sea' ? zone : null };
+  // Varış bir kez duyurulur (announceFleets): yeni emir yeni varıştır.
+  delete fleet.arrived;
+  return true;
+}
+
+/** Sıradaki boş filo adı: "2nd Squadron", "3rd Squadron"... */
+function nextFleetName(navy, id) {
+  const taken = new Set(navy.fleets.map((fleet) => fleet.name));
+  return ORDINALS.slice(1).map((o) => `${o} Squadron`).find((name) => !taken.has(name)) ?? `Squadron ${id}`;
+}
+
+/**
+ * Filoyu ikiye böler: yarısı yeni filoya, aynı emirle (hiçbir gemi kıpırdamaz;
+ * oyuncu yenisine emir verir). Aynı yerdeki gemiler birlikte kalır, ayrılan
+ * yarı listenin sonudur (en zayıf ve en yeni gövdeler). Döner: yeni kimlik.
+ */
+export function splitFleet(nation, fleetId, count = null) {
+  ensureFleets(nation);
+  const navy = nation.navy;
+  const source = fleetById(nation, fleetId);
+  const ships = fleetShips(nation, fleetId);
+  if (!source || ships.length < 2) return null;
+  const take = Math.max(1, Math.min(ships.length - 1, count ?? Math.floor(ships.length / 2)));
+  const place = (ship) => (ship.at >= 0 ? ship.at : ship.zone);
+  const sorted = [...ships].sort((a, b) => place(a) - place(b) || b.hp - a.hp || a.id - b.id);
+  const id = navy.nextFleet++;
+  navy.fleets.push({ id, name: nextFleetName(navy, id), order: { ...source.order } });
+  for (const ship of sorted.slice(sorted.length - take)) ship.fleet = id;
+  return id;
+}
+
+/** Filoyu ötekine katar; bağlı amiral serbest kalır. */
+export function mergeFleet(nation, fromId, intoId) {
+  if (fromId === intoId || !fleetById(nation, fromId) || !fleetById(nation, intoId)) return false;
+  for (const ship of fleetShips(nation, fromId)) ship.fleet = intoId;
+  nation.navy.fleets = nation.navy.fleets.filter((fleet) => fleet.id !== fromId);
+  for (const admiral of officersOf(nation, BRANCH.NAVY)) if (admiral.fleetPin === fromId) delete admiral.fleetPin;
+  return true;
+}
+
+/** Filo listesini siler (ulus YZ'ye geçti): bütün gemiler yeniden Auto havuzunda. */
+export function releaseFleets(nation) {
+  if (!nation?.navy) return;
+  delete nation.navy.fleets;
+  delete nation.navy.nextFleet;
+  for (const ship of shipsOf(nation)) delete ship.fleet;
+  for (const admiral of officersOf(nation, BRANCH.NAVY)) delete admiral.fleetPin;
+}
+
+/** Gemisi kalmayan filo silinir (batan, hurdaya ayrılan); ilk filo hep kalır. */
+function pruneFleets(nation) {
+  const fleets = fleetsOf(nation);
+  if (!fleets) return;
+  const used = new Set(surfaceOf(nation).map((ship) => fleetOfShip(nation, ship)?.id));
+  const keep = fleets.filter((fleet, index) => index === 0 || used.has(fleet.id));
+  if (keep.length === fleets.length) return;
+  const gone = new Set(fleets.filter((fleet) => !keep.includes(fleet)).map((fleet) => fleet.id));
+  nation.navy.fleets = keep;
+  for (const admiral of officersOf(nation, BRANCH.NAVY)) if (gone.has(admiral.fleetPin)) delete admiral.fleetPin;
+}
+
+/**
+ * Limanın denizi, SAF (homeZoneOf limanı kaybedilen gemiye yeni liman yazar;
+ * harita ve ekran dünyaya yazmamalı). Göl kıyısındaki liman denizin en büyüğü.
+ */
+function portZoneOf(world, nation, ship) {
+  const zones = seaZonesOf(world).zones;
+  let province = world.provinces?.[ship.home];
+  if (!province || province.owner !== nation.id || !province.coastal) {
+    province = (world.provinces ?? []).find((p) => p.owner === nation.id && p.coastal && zonesOfProvince(world, p.id).length);
+  }
+  if (!province) return -1;
+  return zonesOfProvince(world, province.id)
+    .reduce((best, row) => (best < 0 || zones[row.zoneId].size > zones[best].size ? row.zoneId : best), -1);
+}
+
+/**
+ * HARİTADAKİ FİLOLAR (seaLayer okur, hesap kurmaz): oyuncunun her filosu
+ * gemilerinin çoğunun bulunduğu denizde tek sayaçtır — nöbette o deniz,
+ * yoldaysa hedefi (ETA ile), limandaysa limanın denizi. Filosuz ulusta tek
+ * sanal "Home Fleet" (kimlik 0). Yalnız okur.
+ */
+export function fleetMarks(world, nation) {
+  if (!nation?.alive) return [];
+  const turn = world.turn ?? 0;
+  const fleets = fleetsOf(nation) ?? [{ id: 0, name: RESERVE_FLEET_NAME, order: AUTO_ORDER, virtual: true }];
+  const out = [];
+  for (const fleet of fleets) {
+    const ships = fleet.virtual ? surfaceOf(nation) : fleetShips(nation, fleet.id);
+    if (!ships.length) continue;
+    const at = new Map();
+    const going = new Map();
+    let port = 0;
+    let eta = Infinity;
+    for (const ship of ships) {
+      if (ship.at >= 0 && !docked(ship, turn)) at.set(ship.at, (at.get(ship.at) ?? 0) + 1);
+      else if (ship.zone >= 0 && !docked(ship, turn)) {
+        going.set(ship.zone, (going.get(ship.zone) ?? 0) + 1);
+        eta = Math.min(eta, ship.eta ?? turn);
+      } else port++;
+    }
+    const top = (map) => [...map.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0] ?? null;
+    const station = top(at);
+    const sail = top(going);
+    let zone;
+    let state;
+    if (station && (!sail || station[1] >= sail[1])) { zone = station[0]; state = 'station'; }
+    else if (sail) { zone = sail[0]; state = 'underway'; }
+    else { zone = portZoneOf(world, nation, ships[0]); state = 'port'; }
+    if (!(zone >= 0)) continue;
+    out.push({
+      id: fleet.id, name: fleet.name, mode: fleet.order?.mode ?? 'auto', target: fleet.order?.zone ?? null,
+      zone, state, count: ships.length, here: state === 'station' ? station[1] : state === 'underway' ? sail[1] : port,
+      eta: Number.isFinite(eta) ? eta : null, strength: fleetStrength(nation, null, ships), virtual: !!fleet.virtual,
+    });
+  }
+  return out;
+}
+
 /**
  * Ulusun kıyısının değdiği bölgeler: bölge → kıyı kenarı (province başına
  * toplam). İç sular budur.
@@ -377,9 +574,9 @@ export function docked(ship, turn) {
  * Filonun toplam savaş gücü (teknolojiyle). YZ cesaret ölçüsü ve diplomasi.
  * `turn` verilirse yalnız denize çıkabilen gemiler sayılır.
  */
-export function fleetStrength(nation, turn = null) {
+export function fleetStrength(nation, turn = null, ships = surfaceOf(nation)) {
   const naval = Math.max(0.3, 1 + mod(nation, 'naval'));
-  return surfaceOf(nation).reduce((sum, ship) => (
+  return ships.reduce((sum, ship) => (
     turn != null && docked(ship, turn) ? sum : sum + ship.hp * shipClassOf(ship).power
   ), 0) * naval;
 }
@@ -444,7 +641,9 @@ export function autoZonePlan(world, nation, presence = null) {
   });
   if (!enemies.length) return { weights, why };
   const turn = world.turn ?? 0;
-  const ours = fleetStrength(nation, turn);
+  // Filoya emir verilmiş gemiler Auto'nun cesaretine girmez: amirallik yalnız
+  // kendi böldüğü gemilerle karar verir (filosuz ulusta bütün filo).
+  const ours = fleetStrength(nation, turn, autoPool(nation));
   const reach = reachableZones(world, home);
   for (const enemy of enemies) {
     const theirs = fleetStrength(enemy, turn);
@@ -589,7 +788,7 @@ export const SQUADRON = 3;
  */
 function readyCount(world, nation, turn) {
   const peace = atPeace(world, nation);
-  return surfaceOf(nation).filter((ship) => !docked(ship, turn) && ship.hp >= RETURN_BELOW
+  return autoPool(nation).filter((ship) => !docked(ship, turn) && ship.hp >= RETURN_BELOW
     && !(peace && ship.hp < RESUME_AT)).length;
 }
 
@@ -761,7 +960,9 @@ const peaceDock = (ship, turn, peace) => peace && !docked(ship, turn) && ship.hp
  * olmayan (`stuck`: hiçbir şey yapılmaz) ve hedef sayıları.
  */
 export function planAllocation(world, nation, turn, presence, override = null) {
-  const ships = surfaceOf(nation);
+  const all = surfaceOf(nation);
+  // Amiralliğin payı: filosuz ulusta bütün yüzey gemileri, aynı sırayla.
+  const ships = fleetsOf(nation) ? autoPool(nation) : all;
   const home = homeZones(world, nation.id);
   const peace = atPeace(world, nation);
   const { targets } = navyTargets(world, nation, presence, override);
@@ -832,13 +1033,42 @@ export function planAllocation(world, nation, turn, presence, override = null) {
       relieve.push({ ship, by, zone: ship.zone, weeks: bestWeeks });
     }
   }
-  return { targets, stay, send, home: free, stuck, relieve, docked: ships.filter(goesHome) };
+  // FİLO EMİRLERİ (yalnız oyuncu): `sea` filosunun her hazır gemisi o denize,
+  // `port` filosu limana. Ulaşılamayan deniz (başka su kütlesi) limanda bekler,
+  // `stuck` ekranın sebebidir. Filosuz ulusta bu döngü hiç dönmez.
+  // TOPLANMA: düşmanın bulunduğu denize filo parça parça girmez — onarımdaki
+  // ya da çekilmiş gemisi varken öteki gemileri limanda bekler. Yoksa yenilen
+  // filonun ilk onarılan gövdesi tek başına dönüp kaçınıyor, altı hafta sonra
+  // yine dönüyordu (ölçüldü, NAVY1 1900: 4 gemiye karşı 1 gemi, iki kez).
+  const regroup = [];
+  if (fleetsOf(nation)) {
+    const reach = reachableZones(world, home);
+    const mending = new Set();
+    for (const ship of all) if (goesHome(ship)) mending.add(fleetOfShip(nation, ship)?.id);
+    for (const ship of all) {
+      const order = shipOrder(nation, ship);
+      if (order.mode === 'auto' || goesHome(ship)) continue;
+      if (order.mode === 'port') { free.push(ship); continue; }
+      if (!reach.has(order.zone)) { stuck.push(ship); free.push(ship); continue; }
+      if (ship.zone === order.zone) { stay.add(ship); continue; }
+      if (mending.has(fleetOfShip(nation, ship)?.id) && zoneBalance(world, presence, nation.id, order.zone).hostile > 0) {
+        regroup.push(ship);
+        free.push(ship);
+        continue;
+      }
+      const weeks = shipTravel(world, nation, ship, order.zone, home);
+      if (!Number.isFinite(weeks)) { stuck.push(ship); free.push(ship); continue; }
+      send.set(ship, { zone: order.zone, weeks });
+    }
+  }
+  return { targets, stay, send, home: free, stuck, regroup, relieve, docked: all.filter(goesHome) };
 }
 
 function allocate(world, nation, turn, presence) {
   const ships = surfaceOf(nation);
   const home = homeZones(world, nation.id);
   pruneRefusals(world, nation, turn);
+  pruneFleets(nation);
   const peace = atPeace(world, nation);
   for (const ship of ships) {
     if (!ship.repairing && ship.hp < RETURN_BELOW) ship.repairing = true;
@@ -882,7 +1112,21 @@ function assignAdmirals(nation) {
   // Oyuncunun elle bağladığı amiral denizinde kalır; kalanlar en kalabalık boş denizlere.
   // YZ bağlamaz: bağ yoksa dağıtım eskisinin aynısıdır (zar çekilmez, sıra aynı).
   const taken = new Set();
+  // Filoya bağlı amiral (yalnız oyuncu) filosunun nöbet tuttuğu denizdedir;
+  // filo limandaysa ya da denizi başka amiralinse komuta etmez, boşa da düşmez.
+  const station = (fleetId) => {
+    const here = new Map();
+    for (const ship of fleetShips(nation, fleetId)) if (ship.at >= 0) here.set(ship.at, (here.get(ship.at) ?? 0) + 1);
+    return [...here.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? null;
+  };
   for (const admiral of admirals) {
+    if (admiral.fleetPin != null && !fleetById(nation, admiral.fleetPin)) delete admiral.fleetPin;
+    if (admiral.fleetPin != null) {
+      const zone = station(admiral.fleetPin);
+      admiral.seaZone = zone != null && !taken.has(zone) ? zone : null;
+      if (admiral.seaZone != null) taken.add(zone);
+      continue;
+    }
     if (admiral.seaPin == null) continue;
     admiral.seaZone = admiral.seaPin;
     taken.add(admiral.seaPin);
@@ -890,7 +1134,7 @@ function assignAdmirals(nation) {
   const free = zones.filter((zoneId) => !taken.has(zoneId));
   let next = 0;
   for (const admiral of admirals) {
-    if (admiral.seaPin == null) admiral.seaZone = free[next++] ?? null;
+    if (admiral.seaPin == null && admiral.fleetPin == null) admiral.seaZone = free[next++] ?? null;
   }
   return new Map(admirals.filter((a) => a.seaZone != null).map((a) => [a.seaZone, a]));
 }
@@ -899,12 +1143,28 @@ function assignAdmirals(nation) {
 export function pinAdmiral(nation, admiralId, zoneId) {
   const admiral = officersOf(nation, BRANCH.NAVY).find((a) => a.id === admiralId);
   if (!admiral) return false;
+  delete admiral.fleetPin;
   if (zoneId == null) {
     delete admiral.seaPin;
   } else {
     admiral.seaPin = zoneId;
     admiral.seaZone = zoneId;
   }
+  return true;
+}
+
+/**
+ * Amirali bir filoya bağlar (filo nereye giderse o oradadır); fleetId null
+ * ise amiral Auto'ya döner. Filonun eski amirali serbest kalır.
+ */
+export function assignFleetAdmiral(nation, fleetId, admiralId) {
+  const admirals = officersOf(nation, BRANCH.NAVY);
+  for (const admiral of admirals) if (admiral.fleetPin === fleetId) delete admiral.fleetPin;
+  if (admiralId == null) return true;
+  const admiral = admirals.find((a) => a.id === admiralId);
+  if (!admiral || !fleetById(nation, fleetId)) return false;
+  delete admiral.seaPin;
+  admiral.fleetPin = fleetId;
   return true;
 }
 
@@ -1606,12 +1866,58 @@ function announce(game, reports, losses, evasions = [], before = null) {
       { kind: 'NAVAL', key: `transport-${row.zone}` },
     );
   }
+  if (me) announceFleets(game, me);
+}
+
+/**
+ * Filonun varışı (yalnız oyuncu, emir başına bir kez): emir verilen denize
+ * hazır gemilerin hepsi vardı. Emir haftalar sürer; oyuncu "gitti mi, orada
+ * ne yapıyor" diye haritayı taramasın. Abluka geçişleri ayrıca duyurulur.
+ */
+function announceFleets(game, me) {
+  const world = game.world;
+  const turn = world.turn ?? 0;
+  const zones = seaZonesOf(world).zones;
+  for (const fleet of fleetsOf(me) ?? []) {
+    if (fleet.order?.mode !== 'sea' || fleet.arrived) continue;
+    const ships = fleetShips(me, fleet.id).filter((ship) => !docked(ship, turn));
+    if (!ships.length || ships.some((ship) => ship.at !== fleet.order.zone)) continue;
+    fleet.arrived = true;
+    const zone = zones[fleet.order.zone];
+    if (!zone) continue;
+    const presence = world.navyState?.presence;
+    const { control, hostile } = zoneBalance(world, presence, me.id, zone.id);
+    const effects = world.nations.filter((other) => other.alive && other.id !== me.id && atWar(world, me.id, other.id)
+      && coastProvincesIn(world, other.id, zone))
+      .map((enemy) => ({ name: enemy.name, share: blockadeShare(world, presence, enemy.id, zone) }))
+      .filter((row) => row.share > 0.01)
+      .map((row) => `blockading ${row.name} ${Math.round(row.share * 100)}%`);
+    const hold = hostile > 0 ? `control ${Math.round(control * 100)}%` : 'the sea is ours';
+    game.turns.addLog(`${fleet.name} on station in ${zone.name}.`, {
+      kind: 'NAVAL', tier: TIER.AMBIENT, tone: 'good', title: `${fleet.name} on station`,
+      body: `${plural(ships.length, 'ship')} hold ${zone.name}: ${[hold, ...effects].join(', ')}.`,
+      tile: anchorTile(world, zone.id), key: `fleet-${fleet.id}`,
+    });
+  }
 }
 
 /** Bölgenin derin noktası (haritada işaretin ve bildirimin yeri). */
 export function anchorTile(world, zoneId) {
   const zone = seaZonesOf(world).zones[zoneId];
   return zone ? world.tiles[zone.anchor] ?? null : null;
+}
+
+/**
+ * Haritada tıklanan karenin denizi (filo emri): su karesinin kendi bölgesi,
+ * kıyı province'inde en uzun kıyısının denizi; iç karada yok (-1).
+ */
+export function zoneAtTile(world, tile) {
+  if (!tile) return -1;
+  if (tile.terrain?.water) return tile.seaZone >= 0 ? tile.seaZone : -1;
+  const provinceId = tile.provinceId >= 0 ? tile.provinceId : tile.fringeOf ?? -1;
+  if (!(provinceId >= 0)) return -1;
+  const best = zonesOfProvince(world, provinceId).reduce((top, row) => (!top || row.edges > top.edges ? row : top), null);
+  return best ? best.zoneId : -1;
 }
 
 function anchorAt(world, zoneId) {
@@ -1735,21 +2041,60 @@ export function forecastZone(world, nation, zoneId, plan, presence) {
   ours += allies;
   const theirs = balance.hostile;
   const ratio = theirs > 0 ? ours / theirs : Infinity;
-  let verdict = 'hold';
-  if (theirs > 0) {
-    if (ours <= 0) verdict = 'none';
-    else if (ratio < EVADE_RATIO) verdict = 'refuse';
-    else if (ratio > 1 / EVADE_RATIO) verdict = 'drive';
-    else if (ratio < 0.9) verdict = 'unfavourable';
-    else if (ratio <= 1.1) verdict = 'even';
-    else verdict = 'favourable';
-  }
+  const verdict = forecastVerdict(ours, theirs);
   return {
     ours, theirs, ships, weeks, allies, ratio, verdict,
     // Kaçınmamak için gereken ve "üstün" sayılmak için gereken güç.
     needFight: theirs * EVADE_RATIO, needFavour: theirs * 1.1,
     enemy: strongestHostile(world, presence, nation.id, zoneId),
   };
+}
+
+/** Öngörünün bandı (forecastZone'un kuralı; filo öngörüsü de bunu okur). */
+function forecastVerdict(ours, theirs) {
+  if (!(theirs > 0)) return 'hold';
+  if (ours <= 0) return 'none';
+  const ratio = ours / theirs;
+  if (ratio < EVADE_RATIO) return 'refuse';
+  if (ratio > 1 / EVADE_RATIO) return 'drive';
+  if (ratio < 0.9) return 'unfavourable';
+  if (ratio <= 1.1) return 'even';
+  return 'favourable';
+}
+
+/**
+ * Bir filoyu bu denize göndermenin öngörüsü (deniz kartının "Send" satırı):
+ * forecastZone'un aynısı, plan yalnız o filonun hazır gemileri. Orada zaten
+ * bulunan gemilerimiz (başka filo) dost güce girer, filonunkiler iki kez sayılmaz.
+ */
+export function fleetForecast(world, nation, ships, zoneId) {
+  const turn = world.turn ?? 0;
+  const presence = world.navyState?.presence ?? null;
+  const home = homeZones(world, nation.id);
+  const peace = atPeace(world, nation);
+  const send = new Map();
+  for (const ship of ships) {
+    if (willDock(ship, turn) || peaceDock(ship, turn, peace)) continue;
+    // Oraya zaten yoldaki gemi: kalan süre (yeniden yola çıkmaz).
+    const weeks = ship.at === zoneId ? 0
+      : ship.zone === zoneId ? Math.max(0, (ship.eta ?? turn) - turn) : shipTravel(world, nation, ship, zoneId, home);
+    if (Number.isFinite(weeks)) send.set(ship, { zone: zoneId, weeks });
+  }
+  const forecast = forecastZone(world, nation, zoneId, { stay: new Set(), send }, presence);
+  // Bu denizdeki öteki gemilerimiz (başka filolar) de orada savaşır.
+  const fleetSet = new Set(ships);
+  const homeHere = home.has(zoneId);
+  let others = 0;
+  for (const ship of presence?.get(zoneId)?.get(nation.id)?.ships ?? []) {
+    if (!fleetSet.has(ship)) others += shipStrength(nation, ship, homeHere, null);
+  }
+  if (others > 0) {
+    forecast.ours += others;
+    forecast.ratio = forecast.theirs > 0 ? forecast.ours / forecast.theirs : Infinity;
+    forecast.verdict = forecastVerdict(forecast.ours, forecast.theirs);
+  }
+  forecast.reach = send.size > 0;
+  return forecast;
 }
 
 /**
@@ -1868,6 +2213,7 @@ export function navyView(world, nation, override = null, { pin = null } = {}) {
     if (ship.at >= 0) interest.add(ship.at);
   }
   for (const key of Object.keys(nation.navy?.zones ?? {})) interest.add(Number(key));
+  for (const fleet of fleetsOf(nation) ?? []) if (fleet.order?.mode === 'sea') interest.add(fleet.order.zone);
   // Denizaltı (seaLanes.js): bizimkinin avlandığı ve yükümüzün batırıldığı denizler.
   for (const ship of subsOf(nation)) if (ship.at >= 0) interest.add(ship.at);
   for (const [zoneId, row] of state.raid ?? []) if (row.has(nation.id)) interest.add(zoneId);
@@ -1993,6 +2339,7 @@ export function navyView(world, nation, override = null, { pin = null } = {}) {
       };
     }).sort((a, b) => b.strength - a.strength || a.id - b.id);
   const squadrons = squadronsOf(world, nation, ships, rows, turn);
+  const fleets = fleetRowsOf(world, nation, rows, turn, alloc);
   const idleShips = ships.filter((ship) => !docked(ship, turn) && ship.hp >= RETURN_BELOW
     && ship.zone < 0 && ship.at < 0 && (ship.eta ?? 0) <= turn);
   const anyTarget = [...targets.values()].some((value) => value > 0);
@@ -2039,7 +2386,10 @@ export function navyView(world, nation, override = null, { pin = null } = {}) {
   });
   return {
     ships,
-    ready,
+    // Denize çıkabilen bütün gövdeler (filo emirliler dahil). `ready` amiralliğin
+    // böldüğü Auto payıdır: başlıkta "0 ready" filosu emir almış oyuncuyu yanıltıyordu.
+    ready: ships.filter((ship) => !docked(ship, turn) && ship.hp >= RETURN_BELOW).length,
+    autoReady: ready,
     total: ships.length,
     atSea: ships.filter((ship) => ship.at >= 0).length,
     sailing: ships.filter((ship) => ship.zone >= 0 && ship.at < 0).length,
@@ -2078,6 +2428,9 @@ export function navyView(world, nation, override = null, { pin = null } = {}) {
     enemyStrength: enemyRows.reduce((sum, row) => sum + row.strength, 0),
     atWar: enemies.length > 0,
     squadrons,
+    fleets,
+    fleetsReal: !!fleetsOf(nation),
+    admirals: officersOf(nation, BRANCH.NAVY),
     idle,
     actions,
     blockade: state.blockade?.[nation.id] ?? 0,
@@ -2094,6 +2447,60 @@ export function navyView(world, nation, override = null, { pin = null } = {}) {
     reports: (state.reports ?? []).filter((report) => report.sides.some((side) => side.nations.includes(nation.id))),
     priorityOf: (weight) => linePriorityOf(weight ?? 0),
   };
+}
+
+/**
+ * FİLOLAR (ekranın ana bölümü): filo başına gemiler, güç, emir, hâlleri
+ * (squadronsOf'un aynısı, filonun gemileriyle), bu hafta yola çıkacaklar ve
+ * bağlı amiral. Filosuz ulusta tek sanal "Home Fleet" (kimlik 0): ilk emir onu
+ * gerçek filoya çevirir (orders.setFleetOrder).
+ */
+function fleetRowsOf(world, nation, rows, turn, alloc) {
+  const zones = seaZonesOf(world).zones;
+  const list = fleetsOf(nation) ?? [{ id: 0, name: RESERVE_FLEET_NAME, order: AUTO_ORDER, virtual: true }];
+  const admirals = officersOf(nation, BRANCH.NAVY);
+  const rowOf = new Map(rows.map((row) => [row.zone.id, row]));
+  const stuck = new Set(alloc.stuck);
+  const regroup = new Set(alloc.regroup ?? []);
+  return list.map((fleet, index) => {
+    const ships = fleet.virtual ? surfaceOf(nation) : fleetShips(nation, fleet.id);
+    let sending = 0;
+    let weeks = 0;
+    for (const ship of ships) {
+      const order = alloc.send.get(ship);
+      if (!order) continue;
+      sending++;
+      weeks = Math.max(weeks, order.weeks);
+    }
+    const order = fleet.order ?? AUTO_ORDER;
+    const target = order.mode === 'sea' ? zones[order.zone] ?? null : null;
+    const targetRow = target ? rowOf.get(target.id) ?? null : null;
+    return {
+      id: fleet.id,
+      name: fleet.name,
+      virtual: !!fleet.virtual,
+      reserve: index === 0,
+      order,
+      target,
+      targetRow,
+      // Emir düşmanlı denizeyse öngörü: kart "kaybedeceksin" der (Send düğmesiyle aynı kural).
+      forecast: targetRow && targetRow.hostile > 0 ? fleetForecast(world, nation, ships, target.id) : null,
+      ships,
+      count: ships.length,
+      strength: fleetStrength(nation, null, ships),
+      readyStrength: fleetStrength(nation, turn, ships),
+      hull: ships.length ? ships.reduce((sum, ship) => sum + ship.hp, 0) / ships.length : 0,
+      classes: SHIP_CLASSES.map((cls, gen) => ({ ...cls, gen, count: ships.filter((ship) => (ship.gen ?? 0) === gen).length }))
+        .filter((row) => row.count > 0).reverse(),
+      groups: squadronsOf(world, nation, ships, rows, turn),
+      sending,
+      weeks,
+      stuck: ships.filter((ship) => stuck.has(ship)).length,
+      regroup: ships.filter((ship) => regroup.has(ship)).length,
+      mending: ships.filter((ship) => alloc.docked.includes(ship)).length,
+      admiral: admirals.find((a) => a.fleetPin === fleet.id) ?? null,
+    };
+  });
 }
 
 /** Geri çekilmenin sebebi: o hafta orada kaçınma mı, yenilgi mi oldu. */

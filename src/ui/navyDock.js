@@ -1,23 +1,33 @@
-// SAĞ PANEL — donanma (deniz haritası, Seas kipi, açıkken).
+// SAĞ PANEL — donanma (deniz haritası açıkken ya da haritada bir filo seçiliyken).
 //
-// Kerem: donanma "eğlenceli ama kanser olmayan" olsun. Gemi gemi değil deniz
-// deniz yönetilir (game/navy.js): filo bir HAVUZDUR, oyuncu denizlere öncelik
-// verir (Factories'teki üretim hatlarıyla aynı kademeler), amirallik gemileri
-// böler. Panel ilk bakışta dört soruyu cevaplar, yukarıdan aşağıya: ne kadar
-// güçlüyüm ve karşımda ne var (başlık + AT WAR), filom nerede ve ne yapıyor
-// (WHERE THE FLEET IS), neyi emredebilirim (SEA ORDERS, Build), deniz
-// ticaretime ve askerime ne yapıyor (TRADE & TRANSPORTS); en altta son deniz
-// olayı. Muharebe ve kaçınma kartı aynı panelin gövdesinde açılır.
+// Kerem: donanma "eğlenceli ama kanser olmayan" olsun; 2026-11-23: "gemi kısmı
+// galiba full rework yiyecek". Oynanarak ölçülen sorunlar (NAVY1, 1536×864):
+// panelin içinde iki ayrı kaydırma çubuğu, deniz listesi bir buçuk satıra
+// sıkışıyordu; "filoyu oraya yolla" diye bir emir yoktu (High beş gemiden üçünü
+// yolluyordu); haritadaki filo tıklanmıyordu; sessiz denize tıklamak katlı
+// listede hiçbir şey göstermiyordu; savaşta kıyımız %89 ablukadayken bunun
+// sebebi listenin dibindeydi.
 //
-// Panel sayı KURMAZ: hepsi navyView'den (navy.js) gelir, cümleler navyText'te.
-// Öncelik düğmesinin üstünde durmak yeni planı satırlarda yerinde önizler
-// (aynı planlayıcı: ekran oyunla ayrışamaz).
+// Yeni düzen tek bakışta dört soruyu cevaplar, yukarıdan aşağıya:
+//   1. Savaş: kimle, güçler, kıyımız ve onların kıyısı (abluka) — tek şerit.
+//   2. FİLOLAR: her filo nerede, ne yapıyor, gücü ne, emri ne (Auto / bir
+//      denizi tut / limanda bekle), amirali kim. Böl, birleştir.
+//   3. DENİZLER: ilgili denizler tek satır — hâkimiyet kimde, kaç gemi.
+//      Satıra (ya da haritada denize) tıklamak denizin kartını açar: kim var,
+//      ne etkiliyor, "Send <filo>" düğmeleri ve Auto'nun bu denizdeki ağırlığı.
+//   4. Ticaret, tümenler, denizaltı; tersane (yeni gemi, hurda); son deniz olayı.
+// Haritada: filonun sayacına tık = seç, sağ tık bir denize = emir (game.js).
+//
+// Panel sayı KURMAZ: hepsi navyView (navy.js) ve fleetForecast'ten gelir,
+// cümleler navyText'te. Emirler orders.js'ten geçer (ev ödevi testi).
 
 import {
-  NAVY_PRIORITIES, NAVY_STEPS, SCRAP_REFUND, WITHDRAW_WEEKS, EVADE_RATIO, actionId, dayMonth, navalAction,
-  navyView, pinAdmiral, resetZonePriorities, scrapGroup, scrapObsolete, seaZoneMarks, setZonePriority,
+  NAVY_PRIORITIES, NAVY_STEPS, SCRAP_REFUND, WITHDRAW_WEEKS, EVADE_RATIO, actionId, assignFleetAdmiral,
+  dayMonth, fleetForecast, fleetShips, fleetsOf, mergeFleet, navalAction, navyView, scrapGroup,
+  scrapObsolete, seaZoneMarks, setZonePriority, splitFleet, surfaceOf,
 } from '../game/navy.js';
-import { BRANCH, createGeneral, generalCost, officersOf } from '../game/command.js';
+import { FLEET_ORDER, fleetsToAuto } from '../game/orders.js';
+import { BRANCH, createGeneral, generalCost } from '../game/command.js';
 import { pay } from '../game/cities.js';
 import { subayPortresi } from './icons/subaylar.js';
 import { linePriorityOf } from '../game/econ/industry.js';
@@ -30,6 +40,7 @@ import { dateOfTurn } from '../game/calendar.js';
 import { glyph } from './icons/glyphs.js';
 import { tipAttr } from './kit.js';
 import { kitArt, navyArt } from './icons/art.js';
+import { catAttr, BRANCH_CAT } from './catColors.js';
 import { quietScroll } from './tooltip.js';
 import { toLocal } from './uiScale.js';
 import {
@@ -41,6 +52,8 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[ch]));
 const strip = (html) => String(html).replace(/<[^>]+>/g, '');
+/** Donanma seçim grubunun kategorisi (komutan dalı "navy"): emaye rengi. */
+const NAVY_CAT = catAttr(BRANCH_CAT.navy);
 
 /** "12 Dec 1904": kartın tarihi (yıl dahil). */
 function fullDate(turn) {
@@ -58,24 +71,24 @@ function toneOf(row) {
   return 'quiet';
 }
 
-/** WHERE bölümünün en çok satırı; fazlası son satırda toplanır. */
-const WHERE_LINES = 6;
+/** DENİZLER bölümünün en çok satırı; sessizler ve fazlası tek düğmede açılır. */
+const SEA_LINES = 6;
+
+const MODE_LABEL = { auto: 'Auto', sea: 'Hold sea', port: 'Port' };
 
 export class NavyDock {
   constructor(game) {
     this.game = game;
-    this.preview = null;
     this.focus = null;
     this.hoverZone = null;
-    this.pin = null;
-    this.card = null;
-    this.quietOpen = false;
+    this.sea = null;          // açık deniz kartı (bölge kimliği)
+    this.card = null;         // açık muharebe/kaçınma kartı
+    this.picking = null;      // "Hold sea" seçimi açık filo
+    this.seasOpen = false;
     this.confirmScrap = false;
     this.confirmTimer = 0;
     this.confirmKey = null;
-    // Filo açık başlar: gemi silmek kapalı bir başlığın altındaydı ve bulunmuyordu (Kerem).
-    this.fleetOpen = true;
-    this.whereMax = 0;
+    this.fleetOpen = false;
     this.wasOn = false;
     this.lastActionId = null;
     this.root = document.createElement('aside');
@@ -85,36 +98,50 @@ export class NavyDock {
     this.root.hidden = true;
     document.body.appendChild(this.root);
     this.root.addEventListener('click', (event) => this.onClick(event));
-    // Önizleme ve harita işareti kalıcı kökte dinlenir: haftalık tazeleme
-    // satırları yeniden kurar, imleç yerinde durdukça önizleme geri yazılır.
     this.root.addEventListener('pointerover', (event) => this.onOver(event));
-    this.root.addEventListener('pointerleave', () => this.hover(null, null));
+    this.root.addEventListener('pointerleave', () => this.hover(null));
     this.root.addEventListener('change', (event) => this.onChange(event));
-    // Filo katının açık/kapalı hâli tazelemeden sağ çıksın ('toggle' kabarmaz).
-    this.root.addEventListener('toggle', (event) => {
-      if (event.target.matches?.('.nd-fleet')) this.fleetOpen = event.target.open;
-    }, true);
-    for (const name of ['turn', 'world', 'mapmode', 'politics', 'units']) game.on?.(name, () => this.refresh());
+    for (const name of ['turn', 'mapmode', 'politics', 'units']) game.on?.(name, () => this.refresh());
+    game.on?.('world', () => {
+      this.sea = null;
+      this.card = null;
+      this.picking = null;
+      game.selectFleet?.(null);
+      this.refresh();
+    });
     window.addEventListener('resize', () => this.fit());
     // Bildirim kartı (ui/notifications) deniz kaydını açar.
     game.on?.('navalReport', (id) => {
       this.card = id ?? null;
+      this.sea = null;
       this.refresh();
     });
-    // Deniz haritasında suya tıklamak: bölgeyi odaklar; listede yoksa panelin
-    // tepesine iğneler (NAVY-10: her deniz emir alabilir); bölgede son iki
-    // haftanın muharebesi ya da kaçınması varsa kartını açar.
+    // Haritada filo seçildi/bırakıldı: panel o filoyu öne alır (siyasi kipte de açılır).
+    game.on?.('fleet', (id) => {
+      this.picking = null;
+      if (id != null) { this.card = null; this.sea = null; }
+      this.setHoverZone(null);
+      this.refresh();
+      if (id != null) this.root.querySelector(`[data-nd-fleet="${id}"]`)?.scrollIntoView({ block: 'nearest' });
+    });
+    game.on?.('fleetOrder', ({ fleet, zone, mode }) => this.orderReceipt(fleet, zone, mode));
+    // Deniz haritasında suya tıklamak: denizin kartını açar (son iki haftada
+    // muharebe ya da kaçınma olduysa onun kartını).
     game.on?.('select', (tile) => this.onMapSelect(tile));
-    // Esc deniz haritasında önce kartı, sonra odağı kapatır (yakalama
-    // evresinde: HUD'ın Esc zinciri seçimi silmeden önce).
+    // Esc: önce kart, sonra filo seçimi, sonra odak (yakalama evresinde:
+    // HUD'ın Esc zinciri seçimi silmeden önce).
     window.addEventListener('keydown', (event) => {
-      if (event.code !== 'Escape' || !this.active() || this.root.hidden) return;
+      if (event.code !== 'Escape' || this.root.hidden) return;
       if (event.target?.closest?.('input, textarea, select')) return;
-      if (this.card) {
+      if (this.card || this.sea != null) {
         this.card = null;
-      } else if (this.focus != null || this.pin != null) {
+        this.sea = null;
+      } else if (this.picking != null) {
+        this.picking = null;
+      } else if (this.game.selectedFleet != null) {
+        this.game.selectFleet(null);
+      } else if (this.focus != null) {
         this.focus = null;
-        this.pin = null;
       } else {
         return;
       }
@@ -134,21 +161,18 @@ export class NavyDock {
     return this.game.renderer?.mapMode === 'seas';
   }
 
-  override() {
-    if (!this.preview) return null;
-    const [zoneId, step] = this.preview.split(':');
-    const level = NAVY_PRIORITIES.find((p) => p.id === step);
-    if (level) return { [zoneId]: level.weight };
-    return null;
+  /** Panel deniz haritasında ya da bir filo seçiliyken açıktır. */
+  shown() {
+    return this.active() || this.game.selectedFleet != null;
   }
 
-  view(override = null) {
-    return navyView(this.game.world, this.me(), override, { pin: this.pin });
+  view() {
+    return navyView(this.game.world, this.me(), null, { pin: this.sea });
   }
 
   refresh() {
     const nation = this.me();
-    const on = this.active() && !!nation?.alive;
+    const on = this.shown() && !!nation?.alive;
     this.root.hidden = !on;
     document.body.classList.toggle('navy-open', on);
     if (!on) {
@@ -159,31 +183,26 @@ export class NavyDock {
       return;
     }
     if (!this.wasOn || this.nationId !== nation.id) {
-      // Kip yeniden açıldı ya da ülke değişti: sabit yuvalar sıfırdan ölçülür.
-      this.whereMax = 0;
       this.nationId = nation.id;
       this.wasOn = true;
     }
     const view = this.view();
     if (view.pinRefused) {
       this.flash(`${view.pinRefused.zone.name}: no water route from our ports — the fleet cannot reach it.`);
-      this.pin = null;
+      this.sea = null;
     }
     // Aynı içerik yeniden yazılmaz; yazılırsa kaydırma korunur.
     const html = this.html(view);
     if (html !== this.lastHtml || !this.root.firstChild) {
-      const keepList = this.root.querySelector('.nd-list')?.scrollTop ?? 0;
-      const keepBody = this.root.querySelector('.nd-body')?.scrollTop ?? 0;
+      const keep = this.root.querySelector('.nd-body')?.scrollTop ?? 0;
       this.root.innerHTML = html;
       this.lastHtml = html;
-      for (const [sel, keep] of [['.nd-list', keepList], ['.nd-body', keepBody]]) {
-        const box = this.root.querySelector(sel);
-        if (!box) continue;
+      const box = this.root.querySelector('.nd-body');
+      if (box) {
         quietScroll(box);
         if (keep) box.scrollTop = keep;
       }
     }
-    if (this.preview) this.paint();
     this.mark(this.hoverZone);
     this.fit();
   }
@@ -221,12 +240,14 @@ export class NavyDock {
       if (card) return `${head}${card}`;
       this.card = null;
     }
-    if (!view.total && !view.rows.length && !view.subs) {
-      return `${head}<p class="nd-empty">No coast, no navy.</p>`;
+    if (this.sea != null) {
+      const card = this.seaCardHtml(view, this.sea);
+      if (card) return `${head}${card}`;
+      this.sea = null;
     }
-    // Gemiler ve amiraller en üstte: oyuncunun en sık aradığı iki iş (silmek, atamak)
-    // eskiden panelin dibinde, kapalı bir başlığın altındaydı.
-    return `${head}<div class="nd-body">${this.warHtml(view)}${this.fleetHtml(view)}${this.admiralsHtml(view)}${this.whereHtml(view)}${this.ordersHtml(view)}${this.tradeHtml(view)}${this.subsHtml(view)}</div>${this.lastHtml_(view)}`;
+    // Tek kaydırma alanı gövdedir (yalnız 1366×768 gibi kısa ekranda kayar);
+    // içinde ayrıca kayan kutu yok (Kerem: "daracık alan, sinir bozucu").
+    return `${head}<div class="nd-body">${this.warHtml(view)}${this.fleetsHtml(view)}${this.seasHtml(view)}${this.tradeHtml(view)}${this.yardHtml(view)}</div>${this.lastHtml_(view)}`;
   }
 
   headHtml(view) {
@@ -237,18 +258,22 @@ export class NavyDock {
     return `<header class="nd-head">
         <span class="nd-title">Navy</span>
         <span class="nd-sum"${tipAttr({ text: tip })}><b>${view.total}</b> ${view.total === 1 ? 'warship' : 'warships'} · <b>${view.ready}</b> ready · strength <b>${str1(view.strength)}</b>${view.total ? ` · hull <b>${pct(view.hull)}</b>` : ''}${view.subs ? ` · U×${view.subs}` : ''}</span>
-        <button class="k-btn sm nd-close" type="button" data-nd-close aria-label="Close the naval map"${tipAttr({ text: 'Close the naval map (M)' })}>Close <kbd>M</kbd></button>
+        <button class="k-btn sm nd-close" type="button" data-nd-close aria-label="Close the naval panel"${tipAttr({ text: this.active() ? 'Close the naval map (M)' : 'Close the naval panel (Esc)' })}>Close <kbd>${this.active() ? 'M' : 'Esc'}</kbd></button>
       </header>`;
   }
 
-  /** AT WAR: düşman filoları, güç ve tek oran satırı (barışta tek satır). */
+  /**
+   * SAVAŞ ŞERİDİ: düşman filoları ve iki kıyının ablukası. Abluka eskiden
+   * TRADE bölümündeydi; savaşta oyuncunun ilk görmesi gereken sayıydı.
+   */
   warHtml(view) {
     if (!view.atWar) {
-      return '<section class="nd-war peace"><span class="nd-sec">At peace</span><span class="nd-war-sum">No enemy fleets. Auto keeps a watch on the home seas.</span></section>';
+      return '<section class="nd-war peace"><span class="nd-sec">At peace</span><span class="nd-war-sum">No enemy fleets. Auto fleets keep a watch on the home seas.</span></section>';
     }
     if (!view.enemies.length) {
-      return '<section class="nd-war"><span class="nd-sec">At war</span><span class="nd-war-sum">No enemy has a coast our fleet can reach: the war is fought on land.</span><span class="nd-war-sum dim">Our fleet keeps the home seas.</span></section>';
+      return '<section class="nd-war"><span class="nd-sec">At war</span><span class="nd-war-sum">No enemy has a coast our fleet can reach: the war is fought on land.</span></section>';
     }
+    const world = this.game.world;
     const scale = Math.max(view.strength, view.enemyStrength, 1e-9);
     const shown = view.enemies.slice(0, 3);
     const more = view.enemies.slice(3);
@@ -258,154 +283,322 @@ export class NavyDock {
       return `<button class="nd-enemy" type="button" data-nd-enemy="${enemy.mainSea ?? ''}"${tipAttr({ text: tip })}><b>${esc(enemy.name)}</b><span>${plural(enemy.ships, 'ship')}</span><span class="v">${str1(enemy.strength)}</span><i class="nd-ebar"><i style="width:${(enemy.strength / scale * 100).toFixed(1)}%"></i></i></button>`;
     }).join('');
     const extra = more.length
-      ? `<span class="nd-more"${tipAttr({ text: more.map((e) => `${e.name}: ${plural(e.ships, 'ship')}, ${str1(e.strength)}`).join('\n') })}>+${more.length} more</span>` : '';
+      ? `<span class="nd-more"${tipAttr({ text: more.map((e) => `${e.name}: ${plural(e.ships, 'ship')}, ${str1(e.strength)}`).join('\n') })}>+${more.length}</span>` : '';
     const ratio = view.enemyStrength > 0 ? view.strength / view.enemyStrength : Infinity;
     const tone = ratio >= 1.1 ? 'good' : ratio < 0.9 ? 'bad' : 'warn';
+    // İki kıyı: bizimkinin ablukası (en ağır deniz ve tutan) ve bizim ablukamız.
+    const blockers = view.trade.blockers;
+    const usLine = view.trade.blockade > 0.01 && blockers.length
+      ? `<button class="nd-coast bad" type="button" data-nd-sea="${blockers[0].zone.id}"${tipAttr({ text: `Our coast blockaded\n${BLOCKADE_RULE}\nClick: open ${blockers[0].zone.name}.` })}>Our coast −${pct(view.trade.blockade)} · ${esc(names(world, blockers[0].by) || 'the enemy')} holds ${esc(blockers[0].zone.name)}</button>`
+      : `<span class="nd-coast good"${tipAttr({ text: `Our coast\nNo enemy fleet holds a sea off our coast.\n${BLOCKADE_RULE}` })}>Our coast open</span>`;
+    const ours = view.ourBlockades.map((b) => `${esc(b.name)} −${pct(b.national)}`);
+    const themTip = view.ourBlockades.length
+      ? `Our blockade\n${view.ourBlockades.map((b) => `${b.seas.map((s) => `${s.zone.name}: ${pct(s.share)} of ${b.name}'s ${plural(s.coast, 'coastal state')} there`).join('\n')}\n${b.name}'s sea trade with partners it does not border loses ${pct(b.national)}.`).join('\n\n')}`
+      : 'Our blockade\nNo enemy coast is held: send a fleet to a sea where an enemy has a coast.';
+    const themLine = `<span class="nd-coast ${ours.length ? 'good' : 'dim'}"${tipAttr({ text: themTip })}>${ours.length ? `We blockade ${ours.join(', ')}` : 'No enemy coast blockaded'}</span>`;
     return `<section class="nd-war">
-        <div class="nd-war-cells"><span class="nd-sec">At war</span>${cells}${extra}</div>
-        <div class="nd-war-sum ${tone}">Enemy fleets ${str1(view.enemyStrength)} against our ${str1(view.strength)} — ${Number.isFinite(ratio) ? ratio.toFixed(1) : '∞'} : 1</div>
+        <div class="nd-war-cells"><span class="nd-sec">At war</span>${cells}${extra}<span class="nd-ratio ${tone}"${tipAttr({ text: `Enemy fleets ${str1(view.enemyStrength)} against our ${str1(view.strength)}.` })}>${Number.isFinite(ratio) ? ratio.toFixed(1) : '∞'} : 1</span></div>
+        <div class="nd-coasts">${usLine}${themLine}</div>
       </section>`;
   }
 
-  /** WHERE THE FLEET IS: grup grup (deniz ve hâl başına bir satır). */
-  whereHtml(view) {
-    const lines = view.squadrons.map((group) => this.squadronHtml(view, group));
-    if (!view.total) lines.push('<div class="nd-sq dim"><span class="nd-sqs">No warships yet — build them below (Fleet → Build warship).</span></div>');
-    let shown = lines;
-    if (lines.length > WHERE_LINES) {
-      const rest = view.squadrons.slice(WHERE_LINES - 1);
-      shown = [...lines.slice(0, WHERE_LINES - 1), `<div class="nd-sq dim"><span class="nd-sqs">+${rest.length} more groups (${rest.reduce((sum, g) => sum + g.ships.length, 0)} ships)</span></div>`];
+  // ------------------------------------------------------------ FİLOLAR ---
+
+  /**
+   * FİLOLAR: filo başına kart. Varsayılan tek filo Auto'dadır (YZ'nin kuralı):
+   * oyuncu hiçbir şey yapmadan donanma çalışır; emir vermek isterse filoya tıklar.
+   */
+  fleetsHtml(view) {
+    const me = this.me();
+    const admirals = view.admirals;
+    const cost = Math.round(generalCost(me).ic);
+    const create = `<button class="k-btn xs" type="button" data-nd-newadm${tipAttr({ text: `Create admiral\nTrains a new admiral for ${cost} IC from the development fund. Each addition to the staff costs more. Assign him to a fleet below; on Auto he takes the busiest sea.` })}>+ Admiral · ${cost} IC</button>`;
+    const anyOrder = view.fleets.some((fleet) => fleet.order.mode !== 'auto');
+    const toAuto = view.fleets.length > 1 || anyOrder
+      ? `<button class="k-btn xs" type="button" data-nd-allauto${anyOrder ? '' : ' disabled'}${tipAttr({ text: 'All fleets to Auto\nThe admiralty takes every fleet back: home waters in peace; in war the shared home seas, the enemy coast when our fleet is at least 0.8 of his, escorts where U-boats sink our cargo, and a sea held by an enemy fleet only when our ready fleet is a third stronger.' })}>All to Auto</button>` : '';
+    const hint = this.game.selectedFleet != null
+      ? `<div class="nd-hint">${glyph('advance', 'ctl')}<span><b>${esc(view.fleets.find((f) => f.id === this.game.selectedFleet)?.name ?? 'Fleet')}</b>: <b>right-click a sea</b> or coast to send it · Esc cancels</span></div>`
+      : '';
+    if (!view.total) {
+      return `<section class="nd-fleets"><div class="nd-sec-head"><h4 class="nd-sec">Fleets</h4>${create}</div><p class="nd-empty">No warships yet. ${this.buildButton('WARSHIP', 'Build warship')} — they join the Home Fleet on Auto.</p></section>`;
     }
-    // Sabit yuva: satır sayısı haftadan haftaya inip çıkınca altındaki her şey
-    // kayıyordu (jitter sondası). Kip açıkken görülen en çok satır kadar yer tutulur.
-    this.whereMax = Math.min(WHERE_LINES, Math.max(this.whereMax, shown.length));
-    while (shown.length < this.whereMax) shown.push('<div class="nd-sq pad" aria-hidden="true"></div>');
-    return `<section class="nd-where"><h4 class="nd-sec">Where the fleet is</h4>${shown.join('')}</section>`;
+    const cards = view.fleets.map((fleet) => this.fleetCard(view, fleet, admirals)).join('');
+    return `<section class="nd-fleets">
+        <div class="nd-sec-head"><h4 class="nd-sec">Fleets${hint ? '' : ' <small>click one on the map, right-click a sea to send it</small>'}</h4>${toAuto}${create}</div>
+        ${hint}${cards}
+      </section>`;
   }
 
-  squadronHtml(view, group) {
-    const world = this.game.world;
-    const count = group.ships.length;
-    const hulls = group.ships.map((ship) => `${ship.name} — ${shipClassOf(ship).name.toLowerCase()}, hull ${pct(ship.hp)}`).join('\n');
-    const lowHull = group.hull < 0.85 ? ` · hull ${pct(group.hull)}` : '';
-    let sign = 'dot';
-    // Hâlin resmi (navy-photo) glifin yerine oturur: nöbet = deniz hâkimiyeti,
-    // abluka, onarım, çekilme, liman. Yoldaki/dönen filonun resmi yok; ok
-    // glifi yönü daha iyi söyler.
-    let art = { station: 'sea_control', repairing: 'repair', withdrawn: 'withdrawal', idle: 'port' }[group.kind] ?? '';
-    let place = group.zone?.name ?? '';
-    let status = '';
-    let tone = '';
-    const row = group.row;
-    switch (group.kind) {
-      case 'station': {
-        const blockading = (row?.blockading ?? []).filter((b) => b.share > 0.01)
-          .map((b) => `blockading ${world.nations[b.nation]?.name ?? '?'} ${pct(b.share)}`);
-        // Yeşil ● zaten "nöbette" der: 220 px'lik sütunda abluka ve gövde
-        // "on station · " önekiyle kesiliyordu (1920'de bile "hull 70%" yoktu).
-        if (blockading.length) { status = blockading.join(', '); art = 'blockade'; }
-        else if (row?.hostile > 0) { status = `on station · contesting: ${str1(row.friendly)} vs ${str1(row.hostile)}`; tone = 'warn'; }
-        else if (row?.why?.code === 'escort') status = 'on station · escorting the lanes';
-        else status = 'on station · holding the sea';
-        status += lowHull;
-        if (row?.relief?.length) {
-          const r = row.relief[0];
-          status += ` · ${r.by} relieves ${r.ship} (${pct(r.hp)}) next week`;
-        }
-        tone ||= 'good';
-        break;
-      }
-      case 'underway':
-        sign = 'advance';
-        status = group.assembling
-          ? `assembling · enter together ${dayMonth(group.eta)} (${group.weeks <= 0 ? 'this week' : `${group.weeks} wk`})`
-          : `under way · arrives ${dayMonth(group.eta)} (${group.weeks <= 0 ? 'this week' : `${group.weeks} wk`})`;
-        break;
-      case 'returning':
-        sign = 'return';
-        place = 'Returning to port';
-        status = `in port ${dayMonth(group.eta)} (${group.weeks} wk)`;
-        break;
-      case 'repairing':
-        sign = 'anchor';
-        place = 'Repairing';
-        status = group.stalled
-          ? `hull ${pct(group.hull)} · <b class="bad">STALLED: no ships equipment</b>`
-          : `hull ${pct(group.hull)} · ready ~${dayMonth(group.readyAt)}`;
-        tone = group.stalled ? 'bad' : '';
-        break;
-      case 'withdrawn': {
-        sign = 'anchor';
-        // Deniz adı ad sütununa: "Withdrawn … refused battle in Sea of Marburg"
-        // dönüş tarihini kesiyordu; kırmızı ⚓ ve fiil "çekildi"yi söyler.
-        place = group.zone?.name ?? 'Withdrawn';
-        status = `${group.why === 'refused' ? 'refused battle' : group.why === 'beaten' ? 'beaten' : 'withdrawn'} · back ${dayMonth(group.until)}`;
-        tone = 'bad';
-        break;
-      }
-      case 'idle': {
-        sign = 'anchor';
-        place = 'In port';
-        status = this.idleText(view);
-        break;
-      }
-      default:
-        break;
-    }
-    const zone = group.zone && ['station', 'underway'].includes(group.kind) ? group.zone : null;
-    // Kesilen durum metni ipucunda tam okunur (dar ekranda sütun ~35 harf).
-    const fix = group.kind === 'repairing' && group.stalled ? ' Raise the Ships line (Factories).' : '';
-    const tip = `${place || 'Fleet'} — ${plural(count, 'ship')}\n${strip(status)}${fix}\n${hulls}${group.kind === 'repairing' ? `\nRepair ${pct(view.repairSpeed)} hull a week in port${view.repairSpeed < 0.05 ? ' (no dockyards: half speed)' : ''}; ships equipment in stock ${view.repairStock.toFixed(1)}.` : ''}${zone ? '\nClick the sea: show it on the map.' : ''}`;
-    // Denizin adı haritada gösterir (satır adlarıyla aynı dil): ayrı "Show"
-    // sütunu durum metnini yarıya kesiyordu.
-    const placeHtml = zone
-      ? `<button class="nd-place" type="button" data-nd-show="${zone.id}">${esc(place)}</button>`
-      : `<span class="nd-place">${esc(place)}</span>`;
-    return `<div class="nd-sq ${group.kind}${tone ? ` ${tone}` : ''}"${zone ? ` data-nd-hz="${zone.id}"` : ''}${tipAttr({ text: tip })}>
-        <i class="nd-glyph" aria-hidden="true">${art ? navyArt(art) : glyph(sign, 'ctl')}</i>${placeHtml}<b class="nd-count">${group.kind === 'underway' ? `+${count}` : count}</b><span class="nd-sqs">${status}</span>
+  fleetCard(view, fleet, admirals) {
+    const selected = this.game.selectedFleet === fleet.id;
+    const classes = fleet.classes.map((c) => `${c.count} ${c.count === 1 ? c.name.toLowerCase() : c.plural}`).join(', ');
+    const scale = Math.max(view.strength, 1e-9);
+    const where = this.fleetWhere(view, fleet);
+    const mode = fleet.order.mode;
+    const modes = ['auto', 'sea', 'port'].map((id) => {
+      const on = mode === id;
+      const label = MODE_LABEL[id];
+      const tip = {
+        auto: 'Auto\nThe admiralty decides where these ships sail, by the same rule the AI uses: home waters in peace, the decisive seas in war. It never sails into a sea where the enemy is clearly stronger.',
+        sea: `Hold a sea\nEvery ready ship of ${fleet.name} sails to one sea and holds it: control there blockades the enemy coast, covers our troops at sea and escorts the trade lanes.\nClick, then right-click the sea on the map (or pick it from the list).${mode === 'sea' && fleet.target ? `\nNow: ${fleet.target.name}.` : ''}`,
+        port: 'Port\nThe fleet stays in port as a reserve (fleet in being): it neither fights nor blockades, and repairs.',
+      }[id];
+      return `<button class="k-seg-b${on ? ' on' : ''}" type="button" data-nd-mode="${fleet.id}:${id}"${NAVY_CAT}${tipAttr({ text: tip })}>${esc(label)}</button>`;
+    }).join('');
+    const picker = this.picking === fleet.id ? this.seaPicker(view, fleet) : '';
+    const others = view.fleets.filter((f) => f.id !== fleet.id && !f.virtual);
+    const merge = others.length && !fleet.virtual
+      ? `<select class="nd-sel" data-nd-merge="${fleet.id}"${tipAttr({ text: `Merge\nAll ships of ${fleet.name} join another fleet and take its order.` })}><option value="">Merge…</option>${others.map((f) => `<option value="${f.id}">into ${esc(f.name)}</option>`).join('')}</select>` : '';
+    const split = fleet.count > 1
+      ? `<button class="k-btn xs" type="button" data-nd-split="${fleet.id}"${tipAttr({ text: `Split\nHalf of ${fleet.name} becomes a new fleet with the same order: nothing sails until you give it one. Ships in the same place stay together.` })}>Split</button>` : '';
+    const adm = fleet.admiral;
+    const admSelect = admirals.length
+      ? `<select class="nd-sel" data-nd-fadm="${fleet.id}"${tipAttr({ text: 'Admiral\nAuto: the admiralty sends each free admiral to the busiest sea. Pick one to keep him with this fleet wherever it sails (+6% per skill in battle).' })}><option value="">Adm: Auto</option>${admirals.map((a) => `<option value="${a.id}"${adm?.id === a.id ? ' selected' : ''}>${esc(a.name.split(' ').pop())} · ${a.skill}★${a.fleetPin != null && a.fleetPin !== fleet.id ? ' (other fleet)' : ''}</option>`).join('')}</select>` : '';
+    const face = adm ? `<span class="nd-fface"${tipAttr({ text: `Admiral ${adm.name}\nSkill ${adm.skill}${adm.seaZone != null ? ` · commands in ${this.seaName(adm.seaZone)}` : ' · no fleet at sea'}.` })}>${subayPortresi(adm)}</span>` : '';
+    const hulls = fleet.ships.map((ship) => `${ship.name} — ${shipClassOf(ship).name.toLowerCase()}, hull ${pct(ship.hp)}`).join('\n');
+    return `<div class="nd-fcard ${mode}${selected ? ' selected' : ''}" data-nd-fleet="${fleet.id}"${where.zone != null ? ` data-nd-hz="${where.zone}"` : ''}>
+        <div class="nd-fc-head">
+          <button class="nd-fc-name" type="button" data-nd-pick="${fleet.id}"${tipAttr({ text: `${fleet.name}\n${selected ? 'Selected: right-click a sea on the map to send it.' : 'Click: select it (then right-click a sea on the map) and show it on the map.'}` })}>${esc(fleet.name)}</button>
+          <span class="nd-fc-ships"${tipAttr({ text: `${fleet.name} — ${plural(fleet.count, 'ship')}\n${hulls}` })}><b>${fleet.count}</b> ${fleet.count === 1 ? 'ship' : 'ships'}${classes ? ` · ${esc(classes)}` : ''}</span>
+          <span class="nd-fc-str"${tipAttr({ text: `Strength ${str1(fleet.strength)} (ready ${str1(fleet.readyStrength)}), hull ${pct(fleet.hull)}.\n${strengthRule(view)}` })}><i class="nd-sbar"><i style="width:${(fleet.strength / scale * 100).toFixed(1)}%"></i></i><b>${str1(fleet.strength)}</b></span>
+        </div>
+        <div class="nd-fc-where ${where.tone}"${where.tip ? tipAttr({ text: where.tip }) : ''}><i class="nd-glyph" aria-hidden="true">${where.art}</i>${where.html}</div>
+        <div class="nd-fc-ctl"><span class="k-seg nd-modes">${modes}</span>${face}${admSelect}${split}${merge}</div>
+        ${picker}
       </div>`;
   }
 
-  /** Limanda boşta bekleyen gemilerin sebebi (NAVY-12). */
+  /** Filonun hâli tek satırda: nerede, ne yapıyor, ne etkiliyor (gruplardan). */
+  fleetWhere(view, fleet) {
+    const world = this.game.world;
+    const groups = fleet.groups;
+    const main = groups[0] ?? null;
+    const rest = groups.slice(1);
+    const extra = rest.length ? `<span class="dim"> · +${rest.map((g) => `${g.ships.length} ${{
+      station: `at ${g.zone?.name ?? 'sea'}`, underway: `sailing to ${g.zone?.name ?? 'sea'}`, returning: 'returning',
+      repairing: 'repairing', withdrawn: 'withdrawn', idle: 'in port',
+    }[g.kind] ?? g.kind}`).join(', ')}</span>` : '';
+    let art = navyArt('port');
+    let tone = '';
+    let html = '';
+    let zone = null;
+    let tip = '';
+    if (!main) return { art, tone, html: '<span class="dim">no ships</span>', zone, tip };
+    const row = main.row;
+    switch (main.kind) {
+      case 'station': {
+        zone = main.zone?.id ?? null;
+        art = navyArt('sea_control');
+        const blockading = (row?.blockading ?? []).filter((b) => b.share > 0.01)
+          .map((b) => `blockading ${esc(world.nations[b.nation]?.name ?? '?')} ${pct(b.share)}`);
+        let doing = 'holds the sea';
+        tone = 'good';
+        if (blockading.length) { doing = blockading.join(', '); art = navyArt('blockade'); }
+        else if (row?.hostile > 0) { doing = `contesting: ${str1(row.friendly)} vs ${str1(row.hostile)}`; tone = 'warn'; }
+        else if (row?.why?.code === 'escort' || row?.raidedShare > 0.01) doing = 'escorting the trade lanes';
+        if (row?.ourBlockade > 0.01 && !(row?.hostile > 0)) doing += ` · lifts our blockade`;
+        const hull = main.hull < 0.85 ? ` · hull ${pct(main.hull)}` : '';
+        html = `<button class="nd-place" type="button" data-nd-sea="${zone}">${esc(main.zone?.name ?? '')}</button><span>${doing}${hull}</span>`;
+        tip = `${main.zone?.name} — ${plural(main.ships.length, 'ship')} on station.${row ? `\nControl ${row.hostile > 0 ? pct(row.control) : '100%'}: ours ${str1(row.friendly)} vs enemy ${str1(row.hostile)}.` : ''}\nClick the sea: open its card.`;
+        break;
+      }
+      case 'underway':
+        zone = main.zone?.id ?? null;
+        art = glyph('advance', 'ctl');
+        tone = 'warn';
+        html = `<span>→ </span><button class="nd-place" type="button" data-nd-sea="${zone}">${esc(main.zone?.name ?? '')}</button><span>${main.assembling ? `assembling · enter together ${dayMonth(main.eta)}` : `arrives ${dayMonth(main.eta)} (${main.weeks <= 0 ? 'this week' : `${main.weeks} wk`})`}</span>`;
+        break;
+      case 'returning':
+        art = glyph('return', 'ctl');
+        html = `<span>returning to port · ${dayMonth(main.eta)} (${main.weeks} wk)</span>`;
+        break;
+      case 'repairing':
+        art = navyArt('repair');
+        tone = main.stalled ? 'bad' : '';
+        html = main.stalled
+          ? '<span class="bad">repairing STALLED: no ships equipment — raise the Ships line (Factories)</span>'
+          : `<span>repairing in port · hull ${pct(main.hull)} · ready ~${dayMonth(main.readyAt)}</span>`;
+        break;
+      case 'withdrawn': {
+        art = navyArt('withdrawal');
+        tone = 'bad';
+        const why = main.why === 'refused' ? 'refused battle' : main.why === 'beaten' ? 'beaten' : 'withdrew';
+        html = `<span>${why}${main.zone ? ` in ${esc(main.zone.name)}` : ''} · in port until ${dayMonth(main.until)}${fleet.order.mode === 'sea' ? ', then sails again' : ''}</span>`;
+        tip = `${WITHDRAW_WEEKS} weeks in port after a lost battle or a refusal.${fleet.order.mode === 'sea' ? `\nThe order stays: on ${dayMonth(main.until)} the fleet sails back to ${fleet.target?.name ?? 'its sea'}. A fleet less than half as strong as the enemy there refuses battle again.` : ''}`;
+        break;
+      }
+      case 'idle':
+      default:
+        art = navyArt('port');
+        html = `<span>${fleet.order.mode === 'port' ? 'in port — reserve (fleet in being)' : fleet.order.mode === 'sea' ? 'in port' : esc(this.idleText(view))}</span>`;
+        break;
+    }
+    // Emrin bekleyen hâli ana satırı alır (öncelik: yol yok > toplanma > kalkış);
+    // gemilerin şimdiki yeri ipucunda kalır.
+    const target = fleet.target;
+    const now = strip(html);
+    if (fleet.stuck && target) {
+      art = navyArt('port');
+      tone = 'bad';
+      html = `<span>no water route from our ports to ${esc(target.name)} — pick another sea</span>`;
+      tip = [now, tip].filter(Boolean).join('\n');
+    } else if (fleet.regroup && target) {
+      const mend = groups.find((g) => g.kind === 'repairing');
+      art = navyArt('repair');
+      tone = 'warn';
+      html = `<span>regrouping: waits for ${plural(fleet.mending, 'ship')} under repair${mend ? ` (~${dayMonth(mend.readyAt)})` : ''}, then enters ${esc(target.name)}</span>`;
+      tip = [now, tip, 'A fleet enters a sea the enemy holds only as a whole: its ready ships wait in port until the damaged ones are repaired. Split the fleet to send the ready ships alone.'].filter(Boolean).join('\n');
+    } else if (fleet.sending && fleet.order.mode === 'sea' && target && main.zone?.id !== target.id) {
+      art = glyph('advance', 'ctl');
+      tone = 'warn';
+      zone = target.id;
+      html = `<span>→ </span><button class="nd-place" type="button" data-nd-sea="${target.id}">${esc(target.name)}</button><span>~${fleet.weeks} wk</span>`;
+      tip = [`Sails at the end of the week; the last ship arrives in ~${fleet.weeks} wk.`, `Now: ${now}`, tip].filter(Boolean).join('\n');
+    }
+    if (rest.length) tip = [tip, `Also ${strip(extra).replace(/^ · /, '')}.`].filter(Boolean).join('\n');
+    // Emrin denizinde düşman varsa öngörü satırın sonundadır: kötü oran kırmızı,
+    // oyuncu emri "kaybedeceği" bir denize verdiğini muharebeden önce görür.
+    let odds = '';
+    const fc = fleet.forecast;
+    if (fc && fc.theirs > 0 && fc.reach) {
+      const ratio = fc.ours / fc.theirs;
+      const word = { refuse: 'will refuse battle', drive: 'enemy will flee', unfavourable: 'unfavourable', even: 'even', favourable: 'favourable', none: 'none ready' }[fc.verdict] ?? '';
+      const cls = ['refuse', 'unfavourable', 'none'].includes(fc.verdict) ? 'bad' : fc.verdict === 'even' ? 'warn' : 'good';
+      odds = ` <span class="${cls}">· ${ratio.toFixed(1)} : 1 ${word}</span>`;
+      tip = [tip, forecastTip(fc)].filter(Boolean).join('\n\n');
+    }
+    return { art, tone, html: `${html}${odds}${odds ? '' : extra}`, zone, tip };
+  }
+
+  /** Limanda boşta bekleyen Auto gemilerinin sebebi. */
   idleText(view) {
     const idle = view.idle;
-    if (!idle) return 'ready';
-    if (idle.why === 'next-week') return 'sail next week';
-    if (idle.why === 'all-off') return 'every sea is Off or kept by Auto for later — no orders';
+    if (!idle) return 'in port, ready';
+    if (idle.why === 'next-week') return 'in port — Auto sails them next week';
+    if (idle.why === 'all-off') return 'in port — every sea is Off for Auto';
     if (idle.why === 'fleet-in-being') {
       const sea = idle.seas[0];
-      const row = sea ? view.rows.find((r) => r.zone.id === sea.zone.id) : null;
-      const enemy = row?.enemyShips[0] ? this.game.world.nations[row.enemyShips[0].nation]?.name ?? '' : '';
-      return sea
-        ? `Auto keeps them in port: ${enemy ? `${esc(enemy)}'s fleet` : 'the enemy fleet'} in ${esc(sea.zone.name)} (${str1(sea.there)}) needs ${str1(sea.need)} — fleet in being`
-        : 'Auto keeps them in port — fleet in being';
+      return sea ? `in port — Auto waits: the enemy in ${sea.zone.name} (${str1(sea.there)}) needs ${str1(sea.need)}` : 'in port — Auto waits (fleet in being)';
     }
-    return 'no sea within reach needs them';
+    return 'in port — no sea within reach needs them';
   }
 
-  /** SEA ORDERS: denizler (yalnız bu bölüm kayar). */
-  ordersHtml(view) {
+  /** "Hold sea": denizi listeden seçmek (haritada sağ tık da aynı emir). */
+  seaPicker(view, fleet) {
+    const rows = [...view.rows].sort((a, b) => (b.hostile > 0) - (a.hostile > 0) || b.blockading.length - a.blockading.length || b.home - a.home || a.zone.name.localeCompare(b.zone.name));
+    const options = rows.map((row) => {
+      const tag = row.hostile > 0 ? ` — enemy ${str1(row.hostile)}` : row.blockading.length ? ' — enemy coast' : row.home ? ' — home' : '';
+      return `<option value="${row.zone.id}">${esc(row.zone.name)}${tag}</option>`;
+    }).join('');
+    return `<div class="nd-picker">${glyph('advance', 'ctl')}<span>Right-click a sea, or</span><select class="nd-sel" data-nd-hold="${fleet.id}"><option value="">pick a sea…</option>${options}</select></div>`;
+  }
+
+  // ------------------------------------------------------------ DENİZLER ---
+
+  /** DENİZLER: tek satır deniz başına; tık kartı açar. Sessiz denizler katlıdır. */
+  seasHtml(view) {
     const loud = view.rows.filter((row) => !row.quiet);
     const quiet = view.rows.filter((row) => row.quiet);
-    const rows = loud.map((row) => this.rowHtml(row, view));
-    if (quiet.length) {
-      const allHome = quiet.every((row) => row.home);
-      const label = `${quiet.length} quiet ${allHome ? 'home ' : ''}${quiet.length === 1 ? 'sea' : 'seas'} on Auto — ${quiet.map((row) => row.zone.name).join(', ')}`;
-      rows.push(`<button class="nd-quiet" type="button" data-nd-quiet${tipAttr({ text: `Quiet seas\nNo ships of ours, no enemy, no blockade and no U-boats here; Auto sends nothing. Click to ${this.quietOpen ? 'fold them' : 'list them and give them an order'}.` })}><i aria-hidden="true">${glyph(this.quietOpen ? 'chev-down' : 'chev-right', 'ctl')}</i><span>${esc(label)}</span></button>`);
-      if (this.quietOpen) for (const row of quiet) rows.push(this.rowHtml(row, view));
+    let list = loud;
+    let more = 0;
+    if (!this.seasOpen && loud.length > SEA_LINES) {
+      list = loud.slice(0, SEA_LINES - 1);
+      more = loud.length - list.length;
+    }
+    const rows = list.map((row) => this.seaRowHtml(row));
+    if (this.seasOpen) for (const row of quiet) rows.push(this.seaRowHtml(row));
+    const hidden = more + (this.seasOpen ? 0 : quiet.length);
+    if (hidden > 0 || this.seasOpen) {
+      const label = this.seasOpen ? 'Fewer seas' : `+${hidden} more ${hidden === 1 ? 'sea' : 'seas'}${quiet.length && !more ? ' (quiet)' : ''}`;
+      rows.push(`<button class="nd-more-seas" type="button" data-nd-seas${tipAttr({ text: this.seasOpen ? 'Fold the quiet seas.' : `Show every sea within reach: ${[...list.slice(SEA_LINES), ...quiet].map((r) => r.zone.name).slice(0, 12).join(', ')}${hidden > 12 ? '…' : ''}.` })}><i aria-hidden="true">${glyph(this.seasOpen ? 'chev-down' : 'chev-right', 'ctl')}</i><span>${label}</span></button>`);
     }
     if (!view.rows.length) rows.push('<p class="nd-empty">No sea within reach of our ports.</p>');
-    // "Hepsini Auto'ya" emirlerin başında durur (başlıkta güç satırını kesiyordu).
-    const manual = Object.keys(this.me()?.navy?.zones ?? {}).length > 0;
-    const reset = `<button class="k-btn xs" type="button" data-nd-auto${manual
-      ? tipAttr({ text: 'All seas to Auto\nThe admiralty takes every sea back: home waters in peace; in war the shared home seas, the enemy coast when our fleet is at least 0.8 of his, escorts where U-boats sink our cargo, and a sea held by an enemy fleet only when our ready fleet is a third stronger. It remembers a sea where its squadron had to refuse battle.' })
-      : `${tipAttr({ text: 'All seas are on Auto already.' })} disabled`}>All to Auto</button>`;
-    return `<section class="nd-orders"><div class="nd-orders-head"><h4 class="nd-sec">Sea orders <small>click any sea on the map to add it</small></h4>${reset}</div><div class="nd-list">${rows.join('')}</div></section>`;
+    return `<section class="nd-seas"><div class="nd-sec-head"><h4 class="nd-sec">Seas <small>click one (or any sea on the map) for its card</small></h4></div>${rows.join('')}</section>`;
   }
 
-  rowHtml(row, view) {
+  seaRowHtml(row) {
     const world = this.game.world;
+    const tone = toneOf(row);
+    const enemyShips = row.enemyShips.reduce((sum, e) => sum + e.ships, 0);
+    const label = row.hostile <= 0 ? (row.friendly > 0 ? 'ours' : '—') : row.friendly <= 0 ? 'lost' : pct(row.control);
+    // Tek etiket (önem sırasıyla): adın yeri kalsın; hepsi denizin kartında.
+    const tags = row.status?.state === 'held' ? '<em class="nd-tag enemy">closed</em>'
+      : row.blockading.length ? '<em class="nd-tag enemy">enemy coast</em>'
+        : row.home ? '<em class="nd-tag home">home</em>' : '';
+    // Tek etki: en önemlisi (kıyımız, ablukamız, akın, düşman); fazlası kartta.
+    let fx = '';
+    if (row.ourBlockade > 0.01) fx = `<span class="bad">our coast here −${pct(row.ourBlockade)}</span>`;
+    else if (row.blockading.some((b) => b.share > 0.01)) {
+      const b = row.blockading.filter((x) => x.share > 0.01).sort((x, y) => y.share - x.share)[0];
+      fx = `<span class="good">blockading ${esc(world.nations[b.nation]?.name ?? '?')} ${pct(b.share)}</span>`;
+    } else if (row.raidedShare > 0.01) fx = `<span class="bad">U-boats: cargo −${pct(row.raidedShare)}</span>`;
+    else if (row.pending > 0) fx = `<span class="warn">+${row.pending} next wk</span>`;
+    const ships = enemyShips ? `<b>${row.present}</b><small>vs</small><b class="bad">${enemyShips}</b>` : `<b>${row.present}</b>`;
+    const tip = `${row.zone.name}\nOurs ${str1(row.friendly)} (${plural(row.present, 'ship')}${row.sailing ? `, ${row.sailing} under way` : ''}) against ${str1(row.hostile)} enemy${enemyShips ? ` (${plural(enemyShips, 'ship')})` : ''}.\nClick: open the sea's card — who is there, what it does, and send a fleet.`;
+    return `<button class="nd-sea ${tone}${this.focus === row.zone.id ? ' focus' : ''}" type="button" data-nd-sea="${row.zone.id}" data-nd-hz="${row.zone.id}"${tipAttr({ text: tip })}>
+        <span class="nd-sea-name">${esc(row.zone.name)}</span>${tags}
+        <span class="nd-sea-fx">${fx}</span>
+        <span class="nd-ships">${ships}</span>
+        <span class="nd-ctl ${row.friendly + row.hostile > 0 ? tone : 'quiet'}"><i style="width:${pct(row.friendly + row.hostile > 0 ? row.control : 0)}"></i></span>
+        <b class="nd-ctlv${row.hostile <= 0 ? ' dim' : ''}">${label}</b>
+      </button>`;
+  }
+
+  /**
+   * DENİZ KARTI: kim var, ne etkiliyor, filoları buraya göndermenin öngörüsü
+   * (Send düğmeleri) ve Auto'nun bu denizdeki ağırlığı (eski öncelik kademeleri:
+   * yalnız Auto filolarını tartar, gemi göndermez).
+   */
+  seaCardHtml(view, zoneId) {
+    const world = this.game.world;
+    const me = this.me();
+    const row = view.rows.find((r) => r.zone.id === zoneId);
+    if (!row) return null;
     const zone = row.zone;
+    const tone = toneOf(row);
+    const enemyShips = row.enemyShips.reduce((sum, e) => sum + e.ships, 0);
+    const verdict = row.hostile <= 0
+      ? (row.friendly > 0 ? `Ours — ${plural(row.present, 'ship')} hold it` : 'Open sea — no warships at war with us')
+      : row.friendly <= 0
+        ? `Lost — ${esc(names(world, row.enemyShips.map((e) => e.nation)))} ${row.enemyShips.length === 1 ? 'holds' : 'hold'} it (${plural(enemyShips, 'ship')}, ${str1(row.hostile)})`
+        : `Contested — we hold ${pct(row.control)} (${str1(row.friendly)} vs ${str1(row.hostile)})`;
+    const tags = [
+      row.home ? `<em class="nd-tag home"${tipAttr({ text: `Home waters\n${plural(row.ourCoast, 'coastal state')} of ours on this sea. Our warships fight 20% harder here.` })}>home</em>` : '',
+      row.blockading.length ? `<em class="nd-tag enemy"${tipAttr({ text: 'Enemy coast\nA nation we are at war with has a coast on this sea: holding it blockades that coast.' })}>enemy coast</em>` : '',
+      row.status?.state === 'held' ? `<em class="nd-tag enemy"${tipAttr({ text: 'Closed to our troops\nOver half of the warships here are the enemy\'s: our divisions cannot embark into it or sail through it.' })}>closed to troops</em>` : '',
+    ].join('');
+    const lines = [];
+    for (const b of row.blockading) {
+      const name = world.nations[b.nation]?.name ?? '?';
+      lines.push(b.share > 0.01
+        ? `<li class="good">Blockading ${esc(name)}: ${pct(b.share)} of its ${plural(b.coast, 'coastal state')} here.</li>`
+        : `<li>${esc(name)}'s coast here (${plural(b.coast, 'state')}) is open: no fleet of ours holds the sea.</li>`);
+    }
+    if (row.ourBlockade > 0.01) lines.push(`<li class="bad">Our coast blockaded: ${pct(row.ourBlockade)} of our ${plural(row.ourCoast, 'coastal state')} here.</li>`);
+    if (row.transportRisk > 0.005) lines.push(`<li class="bad">Our troops at sea here lose ${pct(row.transportRisk)} of their men a week.</li>`);
+    if (row.raidedShare > 0.01) lines.push(`<li class="bad">${plural(row.enemySubs, 'enemy U-boat')} sink ${pct(row.raidedShare)} of our cargo passing here.</li>`);
+    if (row.ourSubs) lines.push(`<li class="good">${plural(row.ourSubs, 'U-boat')} of ours hunting${row.raidingShare > 0.01 ? `: enemy cargo −${pct(row.raidingShare)}` : ''}.</li>`);
+    for (const e of row.enemyShips) lines.push(`<li class="bad">${esc(world.nations[e.nation]?.name ?? '?')}: ${plural(e.ships, 'ship')}, strength ${str1(e.strength)}.</li>`);
+    if (row.admiral) lines.push(`<li>Admiral ${esc(row.admiral.name)} (skill ${row.admiral.skill}) commands here.</li>`);
+    if (row.memo) lines.push(`<li class="warn">${esc(memoLine(row.memo))}.</li>`);
+    if (!lines.length) lines.push('<li class="dim">Quiet waters: no coast at war, no enemy, no U-boats.</li>');
+    // Send: her filo için öngörü (aynı kural: kaçınma bandı, denk, üstün).
+    const sends = view.fleets.filter((fleet) => fleet.count > 0).map((fleet) => {
+      const here = fleet.order.mode === 'sea' && fleet.order.zone === zoneId;
+      const there = fleet.ships.some((ship) => ship.at === zoneId);
+      const ships = fleet.virtual ? surfaceOf(me) : fleetShips(me, fleet.id);
+      const forecast = fleetForecast(world, me, ships, zoneId);
+      const line = forecast.reach ? forecastLine(world, forecast) : null;
+      const eta = Math.max(0, forecast.weeks);
+      const note = !forecast.reach ? '<span class="bad">no ready ship can reach it</span>'
+        : line ? `<span class="${line.tone}">${esc(line.text)}</span>`
+          : `<span class="dim">${eta ? `~${eta} wk` : 'there now'} · ${str1(forecast.ours)} strength</span>`;
+      const tip = forecast.theirs > 0 ? forecastTip(forecast) : `${fleet.name} to ${zone.name}: ${plural(forecast.ships, 'ready ship')}, ${eta ? `the last arrives in ~${eta} wk` : 'already there'}.`;
+      return `<div class="nd-send">
+          <button class="k-btn xs${here ? ' on' : ''}" type="button" data-nd-send="${fleet.id}:${zoneId}"${here || !forecast.reach ? ' disabled' : ''}${tipAttr({ text: `${here ? `${fleet.name} already holds ${zone.name}.` : `Send ${fleet.name}\nEvery ready ship sails to ${zone.name} and holds it until you give another order.`}\n\n${tip}` })}>${here ? `${esc(fleet.name)} ${there ? 'holds it' : 'ordered here'}` : `Send ${esc(fleet.name)}`}</button>${note}
+        </div>`;
+    }).join('');
+    // Auto'nun ağırlığı (eski öncelikler): yalnız Auto filolarının bölüşümü.
     const auto = row.priority.mode !== 'manual';
     const current = linePriorityOf(auto ? row.weight : row.priority.weight);
     const autoWhy = whySentence(world, row.priority.mode === 'manual' ? row.why?.auto ?? null : row.why, zone.name);
@@ -414,134 +607,46 @@ export class NavyDock {
       const on = step === 'auto' ? auto : !auto && current.id === step;
       const at = auto && level && current.id === step;
       const tip = level
-        ? { text: `${level.name} on ${zone.name}\nThe admiralty splits ready ships by weight (Low 1, Normal 3, High 6). Hover to preview, click to order.` }
+        ? { text: `${level.name} for Auto fleets on ${zone.name}\nThe admiralty splits the ships of Auto fleets by weight (Low 1, Normal 3, High 6). It does not touch a fleet with its own order — use Send for that.` }
         : { text: `${auto ? '' : 'Back to Auto\n'}${autoWhy}` };
       return `<button class="pl-pb${level ? '' : ' auto'}${on ? ' on' : ''}${at ? ' at' : ''}" type="button" data-nd-pri="${zone.id}:${step}"${tipAttr(tip)}>${level ? level.name : 'Auto'}</button>`;
     });
-    const tags = [
-      row.pinned ? `<em class="nd-tag pin">pinned</em><button class="nd-unpin" type="button" data-nd-unpin${tipAttr({ text: 'Unpin\nTake this sea off the top of the list. A sea with your own priority stays listed.' })}>Unpin</button>` : '',
-      row.home ? `<em class="nd-tag home"${tipAttr({ text: `Home waters\n${plural(row.ourCoast, 'coastal state')} of ours on this sea. Our warships fight ${20}% harder here.` })}>home</em>` : '',
-      row.blockading.length ? `<em class="nd-tag enemy"${tipAttr({ text: 'Enemy coast\nA nation we are at war with has a coast on this sea: holding it blockades that coast.' })}>enemy coast</em>` : '',
-    ].join('');
-    const enemyShips = row.enemyShips.reduce((sum, e) => sum + e.ships, 0);
-    const effects = this.effects(row);
-    const tone = toneOf(row);
-    // Düşmansız denizde yüzde anlamsızdır (hep %100): "held"; deniz tamamen
-    // düşmandaysa "lost"; çekişmede pay.
-    const label = row.hostile <= 0 ? (row.friendly > 0 ? 'held' : '—') : row.friendly <= 0 ? 'lost' : pct(row.control);
-    const control = `<span class="nd-ctl ${row.friendly + row.hostile > 0 ? tone : 'quiet'}"${tipAttr({ text: `Control ${row.friendly + row.hostile > 0 ? pct(row.control) : '—'}\nOur and allied strength ${str1(row.friendly)} against ${str1(row.hostile)} enemy. Whoever holds a sea blockades the coasts on it; over half for the enemy closes it to our troops.` })}><i style="width:${pct(row.friendly + row.hostile > 0 ? row.control : 0)}"></i></span><b class="nd-ctlv${row.hostile <= 0 ? ' dim' : ''}">${label}</b>`;
-    const pending = row.pending !== 0
-      ? `<em class="nd-pend ${row.pending > 0 ? 'up' : 'down'}">${row.pending > 0 ? '+' : '−'}${Math.abs(row.pending)} next wk</em>` : '';
-    const shipsText = enemyShips ? `<b>${row.present}</b><small>vs</small><b class="bad">${enemyShips}</b>` : `<b>${row.present}</b><small>${row.present === 1 ? 'ship' : 'ships'}</small>`;
-    const shipsTip = `${zone.name}\n${plural(row.present, 'ship')} of ours on station${row.sailing ? `, ${row.sailing} under way` : ''}${enemyShips ? `; ${plural(enemyShips, 'enemy ship')} (${str1(row.hostile)})` : ''}.\nNext week the admiralty plans ${plural(row.planned, 'ship')} here${row.pending > 0 && row.plannedWeeks ? ` (the farthest arrives in ~${row.plannedWeeks} wk)` : ''}.`;
-    const line3 = this.line3(row);
-    return `<div class="nd-row ${tone}${this.focus === zone.id ? ' focus' : ''}${row.pinned ? ' pinned' : ''}" data-nd-zone="${zone.id}">
-      <div class="nd-row-head">
-        <button class="nd-name" type="button" data-nd-focus="${zone.id}"${tipAttr({ text: `${zone.name}\nShow on the map.` })}>${esc(zone.name)}</button>${tags}
-        <span class="nd-ships" data-nd-ships="${zone.id}"${tipAttr({ text: shipsTip })}>${shipsText}${pending}<em class="nd-pv" data-nd-pv="${zone.id}"></em></span>
-        ${control}
-      </div>
-      <div class="nd-row-mid">
-        <span class="pl-pri nd-pri">${steps[0]}<span class="pl-tiers">${steps.slice(1).join('')}</span></span>
-        <div class="nd-fx" data-nd-fx="${zone.id}"${tipAttr({ text: `${zone.name}\n${effects.map(strip).join('\n') || 'Quiet waters.'}${auto ? `\n\n${autoWhy}` : ''}` })}>${effects.join('<i>·</i>') || `<span class="dim">${esc(this.quietNote(row))}</span>`}</div>
-      </div>
-      ${line3 ? `<div class="nd-fc ${line3.tone}" data-nd-fc="${zone.id}"${line3.tip ? tipAttr({ text: line3.tip }) : ''}>${esc(line3.text)}</div>` : ''}
-    </div>`;
+    const refusals = row.priority.mode === 'manual' && row.refusals.count
+      ? `<p class="nd-card-note bad">Refused battle ${row.refusals.count}× here since ${dayMonth((row.refusals.first ?? row.refusals.last).turn)}.</p>` : '';
+    return `<div class="nd-card nd-seacard">
+        <div class="nd-card-nav">
+          <button class="k-btn xs" type="button" data-nd-back>‹ Back</button>
+          <div class="nd-card-title"><b>${esc(zone.name)}</b>${tags}</div>
+          <button class="k-btn xs" type="button" data-nd-show="${zone.id}">Show on map</button>
+        </div>
+        <div class="nd-card-verdict ${tone === 'enemy' ? 'bad' : tone === 'contested' ? 'warn' : tone === 'ours' ? 'good' : ''}">${verdict}<span class="nd-ctl ${row.friendly + row.hostile > 0 ? tone : 'quiet'}"><i style="width:${pct(row.friendly + row.hostile > 0 ? row.control : 0)}"></i></span></div>
+        <ul class="nd-card-list">${lines.join('')}</ul>
+        <div class="nd-card-after"><h4 class="nd-sec">Send a fleet here</h4>${sends || '<p class="nd-card-note">No warships.</p>'}</div>
+        <div class="nd-card-after"><h4 class="nd-sec"${tipAttr({ text: 'Admiralty weight\nOnly for fleets on Auto: how much of them the admiralty puts on this sea. Auto follows the rule in the tooltip of the Auto button.' })}>Auto fleets on this sea</h4>
+          <span class="pl-pri nd-pri"${NAVY_CAT}>${steps[0]}<span class="pl-tiers">${steps.slice(1).join('')}</span></span>${refusals}
+        </div>
+      </div>`;
   }
 
-  /** Etki satırı: abluka, kıyımız, nakliye, denizaltı, düşman, amiral. */
-  effects(row) {
-    const world = this.game.world;
-    const effects = [];
-    for (const b of row.blockading) {
-      const name = world.nations[b.nation]?.name ?? '?';
-      effects.push(b.share > 0.01
-        ? `<span class="good">blockading ${esc(name)} ${pct(b.share)}</span>`
-        : `<span>${esc(name)}'s coast open</span>`);
-    }
-    if (row.ourBlockade > 0.01) effects.push(`<span class="bad">our coast blockaded ${pct(row.ourBlockade)}</span>`);
-    if (row.transportRisk > 0.005) effects.push(`<span class="bad">troops at sea −${pct(row.transportRisk)} men/wk</span>`);
-    if (row.raidedShare > 0.01) effects.push(`<span class="bad">${plural(row.enemySubs, 'enemy U-boat')}: our cargo −${pct(row.raidedShare)}</span>`);
-    if (row.ourSubs) effects.push(`<span class="good">our U-boats ${row.ourSubs}${row.raidingShare > 0.01 ? `: enemy cargo −${pct(row.raidingShare)}` : ''}</span>`);
-    for (const e of row.enemyShips.slice(0, 2)) {
-      effects.push(`<span class="bad">${esc(world.nations[e.nation]?.name ?? '?')} ${plural(e.ships, 'ship')} (${str1(e.strength)})</span>`);
-    }
-    if (row.admiral) effects.push(`<span>Adm. ${esc(row.admiral.name.split(' ').pop())}</span>`);
-    if (row.priority.mode !== 'manual' && row.why?.code === 'pooled') effects.push('<span class="dim">Auto: no squadron free (pooled)</span>');
-    return effects;
-  }
+  // -------------------------------------------------- TİCARET / TERSANE ---
 
-  /** Sessiz satırın tek notu (Auto'nun kısa gerekçesi). */
-  quietNote(row) {
-    const code = row.why?.code;
-    if (row.priority.mode === 'manual') return row.weight > 0 ? 'your order — no ships here yet' : 'Off — your order';
-    if (code === 'gathered') return 'Auto: fleet gathered elsewhere in war';
-    if (code === 'home') return 'Auto: home watch';
-    if (code === 'outgunned' || code === 'refused') return 'Auto: kept in port — stronger enemy here';
-    return 'quiet waters';
-  }
-
-  /** Üçüncü satır: öngörü, Auto'nun hafızası ya da elle emrin kaçınma geçmişi. */
-  line3(row) {
-    const world = this.game.world;
-    if (row.hostile > 0 && row.forecast) {
-      const line = forecastLine(world, row.forecast);
-      if (line && row.forecast.verdict === 'none' && ['outgunned', 'refused'].includes(row.why?.code)) {
-        // Boş deniz: Auto'nun neden gitmediği (fleet in being) aynı satırda.
-        // Satır 400 px: tam cümle (neden + eşik) ipucunda.
-        line.text = `${line.text.split(' — ')[0]} — Auto waits for ${str1(row.why.need)} ready (ours ${str1(row.why.ours)})`;
-      }
-      if (line) return { ...line, tip: `${forecastTip(row.forecast)}\n\n${whySentence(world, row.why, row.zone.name)}` };
-    }
-    if (row.memo) return { tone: 'warn', text: memoLine(row.memo), tip: whySentence(world, row.why, row.zone.name) };
-    if (row.priority.mode === 'manual' && row.refusals.count) {
-      const last = row.refusals.last;
-      const strong = last.sides[1];
-      return {
-        tone: 'bad',
-        text: `refused battle ${row.refusals.count}× here since ${dayMonth((row.refusals.first ?? last).turn)} — ${names(world, strong.nations)} ${str1(strong.before)} vs our ${str1(last.sides[0].before)}`,
-        tip: `Your order stays on this sea: the squadron sails again each time its ${WITHDRAW_WEEKS}-week hold ends.\nA squadron less than half as strong as the enemy there refuses battle and returns to port.`,
-      };
-    }
-    return null;
-  }
-
-  /** TRADE & TRANSPORTS: deniz ticareti, ablukamız, denizdeki tümenler, kapalı denizler. */
+  /** TİCARET VE TÜMENLER: yollarda kesilen ticaret, denizdeki tümenler, denizaltı. */
   tradeHtml(view) {
     const world = this.game.world;
     const me = this.me();
     const lines = [];
-    const blockers = view.trade.blockers;
     const cuts = laneCutsView(world, me.id);
-    let trade;
-    let tradeTone = '';
-    if (view.trade.blockade > 0.01 && blockers.length) {
-      const worst = blockers[0];
-      trade = `blockaded −${pct(view.trade.blockade)} — ${esc(names(world, worst.by) || 'the enemy')} holds ${esc(worst.zone.name)} (${plural(worst.coast, 'coastal state')} of ours)`;
-      tradeTone = 'bad';
-    } else if (cuts.length) {
+    if (cuts.length) {
       const top = cuts[0];
       const cause = top.cause[0];
       const partner = world.nations[top.partner]?.name ?? '?';
       const why = cause
-        ? cause.kind === 'raid' ? `U-boats in ${seaName(world, cause.zone)}` : `${names(world, cause.by) || 'the enemy'} holds ${seaName(world, cause.zone)}`
+        ? cause.kind === 'raid' ? `U-boats in ${this.seaName(cause.zone)}` : `${names(world, cause.by) || 'the enemy'} holds ${this.seaName(cause.zone)}`
         : 'enemy seas on the way';
-      trade = `trade with ${esc(partner)} −${pct(top.lostShare)}: ${esc(why)}${cuts.length > 1 ? ` · ${cuts.length - 1} more lane${cuts.length === 2 ? '' : 's'} cut` : ''}`;
-      tradeTone = 'warn';
-    } else {
-      trade = 'open — no blockade, no lane cut';
-      tradeTone = 'good';
-    }
-    const tradeTip = `Sea trade\n${BLOCKADE_RULE}\nTrade between partners who do not border each other sails along the lanes on this map; an enemy-held sea on the way or U-boats on a lane sink the cargo that passes.${cuts.length ? `\n\nLanes cut now:\n${cuts.slice(0, 5).map((c) => `${world.nations[c.partner]?.name ?? '?'} −${pct(c.lostShare)} (${c.cause.map((x) => `${seaName(world, x.zone)}: ${x.kind === 'raid' ? 'U-boats' : 'held'} by ${names(world, x.by) || '?'}`).join('; ') || 'enemy seas'})`).join('\n')}` : ''}\nClick: show the worst sea.`;
-    const worstZone = blockers[0]?.zone.id ?? cuts[0]?.cause[0]?.zone ?? null;
-    lines.push(this.tlHtml('Sea trade', trade, tradeTone, tradeTip, worstZone != null ? `data-nd-show="${worstZone}"` : '', navyArt('convoy')));
-    if (view.atWar) {
-      const ours = view.ourBlockades.map((b) => (b.national >= 0.1
-        ? `${esc(b.name)} ${pct(b.national)} of its coast` : `${esc(b.name)}: token blockade (${pct(b.national)})`));
-      const tip = view.ourBlockades.length
-        ? `Our blockade\n${view.ourBlockades.map((b) => `${b.seas.map((s) => `${s.zone.name}: ${pct(s.share)} of ${b.name}'s ${plural(s.coast, 'coastal state')} there (cover: our ${str1(s.strength)} strength vs ${str1(0.6 * s.coast)} needed = 0.6 per state)`).join('\n')}\n${b.name} has ${plural(b.coastal, 'coastal state')}: its sea trade with partners it does not border loses ${pct(b.national)}.`).join('\n\n')}\nEffective from 10% of the coast.`
-        : 'Our blockade\nNo enemy coast is blockaded: send ships to a sea where an enemy has a coast (ENEMY COAST tag).';
-      lines.push(this.tlHtml('Our blockade', ours.join(' · ') || 'none — no enemy coast is held', ours.length ? 'good' : 'dim', tip, '', navyArt('blockade')));
+      const trade = `trade with ${esc(partner)} −${pct(top.lostShare)}: ${esc(why)}${cuts.length > 1 ? ` · ${cuts.length - 1} more` : ''}`;
+      const tradeTip = `Sea lanes\n${BLOCKADE_RULE}\nTrade between partners who do not border each other sails along the lanes on this map; an enemy-held sea on the way or U-boats on a lane sink the cargo that passes.${cuts.length ? `\n\nLanes cut now:\n${cuts.slice(0, 5).map((c) => `${world.nations[c.partner]?.name ?? '?'} −${pct(c.lostShare)} (${c.cause.map((x) => `${this.seaName(x.zone)}: ${x.kind === 'raid' ? 'U-boats' : 'held'} by ${names(world, x.by) || '?'}`).join('; ') || 'enemy seas'})`).join('\n')}` : ''}`;
+      const worstZone = cuts[0]?.cause[0]?.zone ?? null;
+      lines.push(this.tlHtml('Sea lanes', trade, 'warn', tradeTip, worstZone != null ? `data-nd-sea="${worstZone}"` : '', navyArt('convoy')));
     }
     const units = view.transports.reduce((sum, t) => sum + t.units.length, 0);
     let troops = 'none at sea';
@@ -558,18 +663,16 @@ export class NavyDock {
       troops = `${plural(units, 'division')} at sea · ${esc(first.zone.name)} (${status})${where ? ` → ${esc(where)}${eta ? ` ~${eta} wk` : ''}` : ''}${view.transports.length > 1 ? ` · ${view.transports.length - 1} more sea${view.transports.length === 2 ? '' : 's'}` : ''}`;
       troopTone = first.status.state === 'held' ? 'bad' : '';
     }
+    const closed = view.atWar && view.closed.length
+      ? ` · <span class="bad">closed: ${view.closed.map((c) => esc(c.zone.name)).join(', ')}</span>` : '';
     const troopRows = view.transports.map((t) => `${t.zone.name}: ${plural(t.units.length, 'division')} — ${t.status.state === 'held' ? `${names(world, t.status.holders)} holds ${pct(t.status.share)}, −${pct(t.riskPerWeek)} men a week` : t.status.state}`);
-    lines.push(this.tlHtml('Troops', troops, troopTone, `Troops at sea\n${troopRows.length ? `${troopRows.join('\n')}\n\n` : ''}${TROOPS_RULE}${units ? '\nClick: select them.' : ''}`, units ? 'data-nd-troops' : '', navyArt('landing')));
-    if (view.atWar) {
-      const closed = view.closed.map((c) => `${esc(c.zone.name)} (${esc(names(world, c.holders) || 'the enemy')} ${pct(c.share)})`);
-      // Kapalı deniz = düşmanın deniz hâkimiyeti: aynı resim, kırmızı metin kimin
-      // elinde olduğunu söyler. Resimsiz satır sütunu kaydırıyordu.
-      lines.push(this.tlHtml('Closed', closed.length ? `${closed.join(', ')} — troops cannot enter` : 'none — every sea is open to our troops',
-        closed.length ? 'bad' : 'dim',
-        `Closed seas\nOver half of the warships in a sea are the enemy's: our divisions cannot embark into it or sail through it. Divisions already inside may still sail out and land, losing men every week.${closed.length ? '\nHatched on the map while an army is selected.' : ''}`,
-        closed.length ? `data-nd-show="${view.closed[0].zone.id}"` : '', navyArt('sea_control')));
+    // Söyleyecek bir şeyi olmayan satır gösterilmez (panel pencereye sığsın):
+    // denizde tümen ya da kapalı deniz yoksa "Troops", denizaltı yoksa "U-boats".
+    if (units || closed) {
+      lines.push(this.tlHtml('Troops', `${troops}${closed}`, troopTone, `Troops at sea\n${troopRows.length ? `${troopRows.join('\n')}\n\n` : ''}${TROOPS_RULE}${view.closed.length ? '\nClosed seas are hatched on the map while an army is selected.' : ''}${units ? '\nClick: select them.' : ''}`, units ? 'data-nd-troops' : '', navyArt('landing')));
     }
-    return `<section class="nd-trade"><h4 class="nd-sec">Trade &amp; transports</h4>${lines.join('')}</section>`;
+    if (view.subs || view.rows.some((row) => row.raidedShare > 0.01 || row.enemySubs > 0)) lines.push(this.subsLine(view));
+    return lines.length ? `<section class="nd-trade">${lines.join('')}</section>` : '';
   }
 
   tlHtml(label, value, tone, tip, attr = '', icon = '') {
@@ -577,14 +680,14 @@ export class NavyDock {
     return `<${tag} class="nd-tl${attr ? ' click' : ''}"${attr ? ` type="button" ${attr}` : ''}${tipAttr({ text: tip })}><span class="k">${icon}${esc(label)}</span><span class="v ${tone}">${value}</span></${tag}>`;
   }
 
-  /** SUBMARINES: tek satır (emir yok: tasarım gereği kendi başlarına giderler). */
-  subsHtml(view) {
+  /** Denizaltı: tek satır (emir yok: tasarım gereği kendi başlarına giderler). */
+  subsLine(view) {
     const world = this.game.world;
     const me = this.me();
     let text;
     if (!view.subs) {
       const era = recruitBlockers(this.game, me, 'SUBMARINE').find((b) => b.id === 'era');
-      text = era ? `none — ${esc(era.text.replace(/^Requires /, '').replace(/\.$/, ''))} unlocks them` : 'none — build them under Fleet';
+      text = era ? `none — ${esc(era.text.replace(/^Requires /, '').replace(/\.$/, ''))} unlocks them` : 'none — build them in the shipyard';
     } else {
       const hunting = [];
       for (const [zoneId, here] of world.navyState?.subs ?? []) {
@@ -592,18 +695,28 @@ export class NavyDock {
       }
       const best = view.rows.reduce((max, row) => Math.max(max, row.raidingShare ?? 0), 0);
       text = view.atWar
-        ? `U×${view.subs} · ${hunting.reduce((s, h) => s + h.ships, 0)} hunting${hunting.length ? ` in ${esc(hunting.slice(0, 2).map((h) => seaName(world, h.zone)).join(', '))}${hunting.length > 2 ? '…' : ''}` : ''}${best > 0.01 ? ` · enemy cargo −${pct(best)}` : ''}`
+        ? `U×${view.subs} · ${hunting.reduce((s, h) => s + h.ships, 0)} hunting${hunting.length ? ` in ${esc(hunting.slice(0, 2).map((h) => this.seaName(h.zone)).join(', '))}${hunting.length > 2 ? '…' : ''}` : ''}${best > 0.01 ? ` · enemy cargo −${pct(best)}` : ''}`
         : `U×${view.subs} · in port (peace)`;
     }
-    // Emri olmayan tek satır: resim onu filonun emir satırlarından ayırır.
-    return `<section class="nd-subs">${this.tlHtml('Submarines', text, view.subs ? '' : 'dim', 'Submarines\nNo orders by design: in war they go by themselves where the enemy\'s trade lanes cross and his escorts are thin, and sink a share of the cargo that passes. Enemy warships in the same sea hunt them.', '', kitArt('submarine'))}</section>`;
+    return this.tlHtml('U-boats', text, view.subs ? '' : 'dim', 'Submarines\nNo orders by design: in war they go by themselves where the enemy\'s trade lanes cross and his escorts are thin, and sink a share of the cargo that passes. Enemy warships in the same sea hunt them.', '', kitArt('submarine'));
+  }
+
+  /** Yeni gemi: Military ekranıyla aynı yol (buyUnit, Shift = 5). */
+  buildButton(typeId, label) {
+    const me = this.me();
+    const blockers = recruitBlockers(this.game, me, typeId);
+    const cost = UNIT_TYPES[typeId];
+    const tip = blockers.length
+      ? `${label}\nNot possible now:\n${blockers.map((b) => b.text).join('\n')}`
+      : `${label}\n${cost?.manpower ?? '?'} men from a coastal state; ships equipment from the dockyards. Training queue like any regiment; new warships join the first fleet.\nShift-click: order 5.`;
+    return `<button class="k-btn xs" type="button" data-nd-build="${typeId}"${blockers.length ? ' disabled aria-disabled="true"' : ''}${tipAttr({ text: tip })}>${label}</button>`;
   }
 
   /**
-   * FLEET: sınıf başına gövde, hurda, yeni gemi ve eğitimdekiler. Gemi gemi
-   * liste yok — hangi gövdenin gideceğini navy.scrapPicks seçer.
+   * TERSANE: yeni gemi (her zaman görünür) ve gövde sınıfları (hurda). Gemi
+   * gemi liste yok — hangi gövdenin gideceğini navy.scrapPicks seçer.
    */
-  fleetHtml(view) {
+  yardHtml(view) {
     const me = this.me();
     const button = (row, count) => {
       const key = `${row.group}:${count}`;
@@ -623,69 +736,21 @@ export class NavyDock {
     const scrap = view.obsolete
       ? `<button class="k-btn xs nd-scrap${this.confirmScrap ? ' confirm' : ''}" type="button" data-nd-scrap${tipAttr({ text: `Scrap obsolete ships\n${view.obsolete} of your warships are older than the ${view.current.name.toLowerCase()} you can now build: ${oldest ? `${oldest.plural} fight at ${ratio(oldest)}% of one` : 'they fight weaker'}, yet cost the same upkeep and crew. Scrapping sends the crews home and returns ${Math.round(SCRAP_REFUND * 100)}% of the ships equipment.\nClick twice to confirm.` })}>${this.confirmScrap ? `Confirm: scrap ${view.obsolete}` : `Scrap ${view.obsolete} obsolete`}</button>`
       : '';
-    // Yeni gemi: Military ekranıyla aynı yol (buyUnit, Shift = 5).
-    const build = (typeId, label) => {
-      const blockers = recruitBlockers(this.game, me, typeId);
-      const cost = UNIT_TYPES[typeId];
-      const tip = blockers.length
-        ? `${label}\nNot possible now:\n${blockers.map((b) => b.text).join('\n')}`
-        : `${label}\n${cost?.manpower ?? '?'} men from a coastal state; ships equipment from the dockyards. Training queue like any regiment.\nShift-click: order 5.`;
-      return `<button class="k-btn xs" type="button" data-nd-build="${typeId}"${blockers.length ? ' disabled aria-disabled="true"' : ''}${tipAttr({ text: tip })}>${label}</button>`;
-    };
     const queue = trainingQueue(me).filter((item) => UNIT_TYPES[item.typeId]?.domain === 'sea');
     const turn = this.game.world.turn ?? 0;
     const training = queue.length
-      ? `<div class="nd-train">In training: ${plural(queue.filter((i) => i.typeId === 'WARSHIP').length, 'warship')}${queue.some((i) => i.typeId === 'SUBMARINE') ? `, ${plural(queue.filter((i) => i.typeId === 'SUBMARINE').length, 'submarine')}` : ''} · ready ${queue.slice(0, 3).map((item) => dayMonth(turn + weeksLeft(me, item))).join(', ')}${queue.length > 3 ? '…' : ''}${queue.some((item) => Object.keys(item.missing ?? {}).length) ? ' · <span class="bad">short of ships equipment</span>' : ''}</div>`
+      ? `<span class="nd-train"${tipAttr({ text: `In training: ${queue.map((item) => `${UNIT_TYPES[item.typeId]?.name ?? item.typeId} ready ${dayMonth(turn + weeksLeft(me, item))}`).join(', ')}.` })}>· ${queue.length} in training, first ${dayMonth(turn + weeksLeft(me, queue[0]))}${queue.some((item) => Object.keys(item.missing ?? {}).length) ? ' · <span class="bad">short of ships equipment</span>' : ''}</span>`
       : '';
     const auto = isDelegated(me, 'recruitment')
-      ? '<div class="nd-train dim">Recruitment is on AUTO: the general staff also builds warships to its own target.</div>' : '';
+      ? `<span class="nd-train dim"${tipAttr({ text: 'Recruitment is on AUTO: the general staff also builds warships to its own target.' })}>· AUTO builds too</span>` : '';
     const hulls = view.fleet.reduce((sum, row) => sum + row.count, 0);
-    const mix = view.classes.map((c) => `${c.count} ${c.count === 1 ? c.name.toLowerCase() : c.plural}${c.gen < SHIP_CLASSES.indexOf(view.current) ? ' (obsolete)' : ''}`).join(' · ');
-    return `<details class="nd-fleet"${this.fleetOpen ? ' open' : ''}>
-      <summary><span class="nd-fsum">Fleet · ${plural(hulls, 'hull')}${mix ? ` · ${esc(mix)}` : ''}</span>${scrap}</summary>
-      ${rows}
-      <div class="nd-build"><span class="k">Build</span>${build('WARSHIP', 'Build warship')}${build('SUBMARINE', 'Build submarine')}</div>
-      ${training}${auto}
-    </details>`;
+    const toggle = hulls
+      ? `<button class="nd-yard-toggle" type="button" data-nd-yard${tipAttr({ text: `Hulls by class: scrap old or surplus ships (${plural(hulls, 'hull')}).` })}>${plural(hulls, 'hull')} · scrap ${glyph(this.fleetOpen ? 'chev-down' : 'chev-right', 'ctl')}</button>` : '';
+    return `<section class="nd-yardline"><span class="k">${navyArt('port')}Shipyard</span>${this.buildButton('WARSHIP', 'Build warship')}${this.buildButton('SUBMARINE', 'Build submarine')}${toggle}${scrap}${training}${auto}</section>
+      ${hulls && this.fleetOpen ? `<div class="nd-yard">${rows}</div>` : ''}`;
   }
 
-  /**
-   * AMİRALLER: kim hangi denizde. Atama eskiden yalnız otomatikti ve hiçbir yerde
-   * görünmüyordu (Kerem: "amiral atamayı bulamadım"). Liste Auto'da kalabilir ya da
-   * bir denize bağlanır (navy.pinAdmiral); amiral yoksa buradan yetiştirilir.
-   */
-  admiralsHtml(view) {
-    const me = this.me();
-    const admirals = officersOf(me, BRANCH.NAVY);
-    const seas = view.rows.map((row) => row.zone);
-    const nameOf = (zoneId) => seas.find((zone) => zone.id === zoneId)?.name
-      ?? this.game.world.seaZones?.zones?.[zoneId]?.name ?? `sea ${zoneId}`;
-    const cost = Math.round(generalCost(me).ic);
-    const create = `<button class="k-btn xs" type="button" data-nd-newadm${tipAttr({ text: `Create admiral\nTrains a new admiral for ${cost} IC from the development fund. Each addition to the staff costs more.` })}>Create admiral · ${cost} IC</button>`;
-    const rows = admirals.map((admiral) => {
-      const where = admiral.seaZone != null ? `commands ${esc(nameOf(admiral.seaZone))}` : 'no fleet at sea';
-      const options = seas.map((zone) => `<option value="${zone.id}"${admiral.seaPin === zone.id ? ' selected' : ''}>${esc(zone.name)}</option>`).join('');
-      return `<div class="nd-adm">
-        <span class="nd-adm-face">${subayPortresi(admiral)}</span>
-        <span class="nd-adm-id"><b>${esc(admiral.name)}</b><small>skill ${admiral.skill} · ${where}</small></span>
-        <select class="nd-adm-sea" data-nd-adm="${admiral.id}"${tipAttr({ text: 'Sea\nAuto: the admiralty sends the admiral to the busiest sea each week. Pick a sea to keep him there.' })}>
-          <option value=""${admiral.seaPin == null ? ' selected' : ''}>Auto</option>${options}
-        </select>
-      </div>`;
-    }).join('');
-    const empty = admirals.length ? '' : '<p class="nd-adm-empty">No admirals. A fleet without one fights without a commander\'s bonus.</p>';
-    return `<section class="nd-adms"><div class="nd-adms-head"><h4 class="nd-sec">Admirals <small>${admirals.length}</small></h4>${create}</div>${rows}${empty}</section>`;
-  }
-
-  onChange(event) {
-    const select = event.target.closest?.('[data-nd-adm]');
-    const nation = this.me();
-    if (!select || !nation) return;
-    const zone = select.value === '' ? null : Number(select.value);
-    pinAdmiral(nation, Number(select.dataset.ndAdm), zone);
-    this.refresh();
-    this.game.requestRender();
-  }
+  // ------------------------------------------------------- SON OLAYLAR ---
 
   /** LAST SEA ACTION: sabit yükseklik (jitter kuralı); iki son kayıt. */
   lastHtml_(view) {
@@ -711,7 +776,7 @@ export class NavyDock {
   actionLine(record) {
     const world = this.game.world;
     const me = this.me()?.id;
-    const sea = seaName(world, record.zone);
+    const sea = this.seaName(record.zone);
     if (record.evaded) {
       const [weak, strong] = record.sides;
       return weak.nations.includes(me)
@@ -739,7 +804,7 @@ export class NavyDock {
     const index = view.actions.findIndex((a) => actionId(a) === id);
     const earlier = index >= 0 && index < view.actions.length - 1 ? actionId(view.actions[index + 1]) : null;
     const later = index > 0 ? actionId(view.actions[index - 1]) : null;
-    const sea = seaName(world, record.zone);
+    const sea = this.seaName(record.zone);
     const title = record.evaded ? `No battle in ${sea}` : record.name;
     const nav = `<div class="nd-card-nav">
         <button class="k-btn xs" type="button" data-nd-back>‹ Back</button>
@@ -749,7 +814,7 @@ export class NavyDock {
       </div>`;
     const body = record.evaded ? this.evasionCard(view, record) : this.battleCard(view, record);
     return `<div class="nd-card">${nav}${body}
-        <div class="nd-card-foot"><span class="nd-rule"${tipAttr({ text: BATTLE_RULE })}>How sea battles work</span><button class="k-btn xs" type="button" data-nd-show="${record.zone}">Show on map</button></div>
+        <div class="nd-card-foot"><span class="nd-rule"${tipAttr({ text: BATTLE_RULE })}>How sea battles work</span><button class="k-btn xs" type="button" data-nd-sea="${record.zone}">Open ${esc(sea)}</button><button class="k-btn xs" type="button" data-nd-show="${record.zone}">Show on map</button></div>
       </div>`;
   }
 
@@ -800,7 +865,7 @@ export class NavyDock {
     }
     const now = view.rows.find((row) => row.zone.id === record.zone);
     const nowText = now
-      ? `${seaName(world, record.zone)} now: ${now.hostile <= 0 ? (now.friendly > 0 ? 'we hold 100%' : 'no warships') : now.friendly <= 0 ? `${names(world, now.enemyShips.map((e) => e.nation))} ${now.enemyShips.length === 1 ? 'holds' : 'hold'} it` : `we hold ${pct(now.control)}`}${now.blockading.filter((x) => x.share > 0.01).map((x) => ` · blockading ${world.nations[x.nation]?.name ?? '?'} ${pct(x.share)}`).join('')}.`
+      ? `${this.seaName(record.zone)} now: ${now.hostile <= 0 ? (now.friendly > 0 ? 'we hold 100%' : 'no warships') : now.friendly <= 0 ? `${names(world, now.enemyShips.map((e) => e.nation))} ${now.enemyShips.length === 1 ? 'holds' : 'hold'} it` : `we hold ${pct(now.control)}`}${now.blockading.filter((x) => x.share > 0.01).map((x) => ` · blockading ${world.nations[x.nation]?.name ?? '?'} ${pct(x.share)}`).join('')}.`
       : '';
     return `<div class="nd-card-verdict ${won ? 'good' : 'bad'}">${verdict}</div>
       <div class="nd-card-sides">${side(us)}${side(them)}</div>
@@ -820,17 +885,20 @@ export class NavyDock {
     const ratio = strong.before > 0 ? weak.before / strong.before : 0;
     const head = weWithdrew
       ? `Our squadron refused battle — in port until ${until}`
-      : `${names(world, weak.nations)}'s fleet refused battle — ${seaName(world, record.zone)} is ours`;
+      : `${names(world, weak.nations)}'s fleet refused battle — ${this.seaName(record.zone)} is ours`;
     const vs = `<div class="nd-card-vs"><span><b>${esc(names(world, weak.nations))}</b> ${plural(weak.ships, 'ship')}${weWithdrew ? ` (${weak.sailing ? `${weak.sailing} still sailing` : 'none still sailing'})` : ''} · ${str1(weak.before)}</span><i>vs</i><span><b>${esc(names(world, strong.nations))}</b> ${plural(strong.ships, 'ship')} · ${str1(strong.before)}</span></div>`;
     const lines = [`${ratio.toFixed(2)} : 1 — a fleet less than half as strong as its enemy withdraws instead of fighting.`];
     if (weWithdrew) {
       lines.push(`To fight here the squadron needs ≥ ${str1(strong.before * EVADE_RATIO)}; to be favoured ≈ ${str1(strong.before * 1.1)}.`);
+      const fleet = (fleetsOf(me) ?? []).find((f) => f.order?.mode === 'sea' && f.order.zone === record.zone);
       const manual = me?.navy?.zones?.[record.zone]?.mode === 'manual';
-      if (manual) {
-        lines.push(`Your order stays: ${linePriorityOf(me.navy.zones[record.zone].weight).name} on ${seaName(world, record.zone)} — the ships sail again on ${until}.`);
+      if (fleet) {
+        lines.push(`${fleet.name}'s order stays: it sails back to ${this.seaName(record.zone)} on ${until}. Merge another fleet into it, or set it to Auto.`);
+      } else if (manual) {
+        lines.push(`Your Auto weight stays: ${linePriorityOf(me.navy.zones[record.zone].weight).name} on ${this.seaName(record.zone)} — the ships sail again on ${until}.`);
       } else {
         const row = view.rows.find((r) => r.zone.id === record.zone);
-        lines.push(row?.memo ? `Auto sea: ${memoLine(row.memo)}.` : 'Auto sea: the admiralty decides again each week.');
+        lines.push(row?.memo ? `Auto: ${memoLine(row.memo)}.` : 'Auto: the admiralty decides again each week.');
       }
     } else {
       lines.push(`${names(world, weak.nations)}'s ships cannot return before ${until}.`);
@@ -839,91 +907,34 @@ export class NavyDock {
       <div class="nd-card-after">${lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>`;
   }
 
-  // --------------------------------------------------------- ÖNİZLEME ---
-
-  /**
-   * Önizleme: öncelik düğmesinin üstünde durunca her satırın yeni planı
-   * yerinde (→ n), boşalan deniz kırmızı ve sebebi etki satırında; üzerinde
-   * durulan denizin öngörüsü üçüncü satırda. Satır yüksekliği değişmez.
-   */
-  paint() {
-    const nation = this.me();
-    if (!nation) return;
-    const override = this.override();
-    const base = this.view();
-    const preview = override ? this.view(override) : null;
-    const world = this.game.world;
-    for (const row of base.rows) {
-      const pv = this.root.querySelector(`[data-nd-pv="${row.zone.id}"]`);
-      const fx = this.root.querySelector(`[data-nd-fx="${row.zone.id}"]`);
-      if (!pv) continue;
-      const next = preview?.rows.find((r) => r.zone.id === row.zone.id);
-      const changed = next && next.planned !== row.planned;
-      pv.textContent = changed ? `→ ${next.planned}` : '';
-      pv.className = `nd-pv${changed ? (next.planned === 0 ? ' down' : ' up') : ''}`;
-      if (fx) {
-        if (changed && next.planned === 0 && next.previewWhy?.code === 'pooled') {
-          fx.dataset.saved ??= fx.innerHTML;
-          const why = next.previewWhy;
-          const seas = (why.by ?? []).map((id) => seaName(world, id)).join(', ');
-          const text = why.used > 0
-            ? `pooled: your order on ${seas} takes this squadron (${why.ready} ready = ${why.slots} squadron${why.slots === 1 ? '' : 's'})`
-            : `pooled: no squadron free (${why.ready} ready = ${why.slots} squadron${why.slots === 1 ? '' : 's'})`;
-          fx.innerHTML = `<span class="bad">${esc(text)}</span>`;
-        } else if (fx.dataset.saved != null) {
-          fx.innerHTML = fx.dataset.saved;
-          delete fx.dataset.saved;
-        }
-      }
-    }
-    // Üzerinde durulan denizin öngörüsü (satırında öngörü satırı varsa).
-    const zoneId = override ? Number(Object.keys(override)[0]) : null;
-    for (const fc of this.root.querySelectorAll('[data-nd-fc]')) {
-      if (fc.dataset.saved != null && Number(fc.dataset.ndFc) !== zoneId) {
-        fc.textContent = fc.dataset.saved;
-        delete fc.dataset.saved;
-      }
-    }
-    if (preview && zoneId != null) {
-      const row = preview.rows.find((r) => r.zone.id === zoneId);
-      const fc = this.root.querySelector(`[data-nd-fc="${zoneId}"]`);
-      const line = row?.forecast ? forecastLine(world, row.forecast) : null;
-      if (fc && line) {
-        fc.dataset.saved ??= fc.textContent;
-        fc.textContent = line.text;
-      } else if (row?.forecast && row.forecast.theirs > 0) {
-        const fx = this.root.querySelector(`[data-nd-fx="${zoneId}"]`);
-        if (fx && line) {
-          fx.dataset.saved ??= fx.innerHTML;
-          fx.innerHTML = `<span class="${line.tone}">${esc(line.text)}</span>`;
-        }
-      }
-    }
-  }
+  // ------------------------------------------------------------ İMLEÇ ---
 
   onOver(event) {
-    const button = event.target.closest?.('[data-nd-pri]');
-    const row = event.target.closest?.('[data-nd-zone], [data-nd-hz]');
-    const zone = row ? Number(row.dataset.ndZone ?? row.dataset.ndHz) : null;
-    this.hover(button?.dataset.ndPri ?? null, Number.isFinite(zone) ? zone : null);
+    const row = event.target.closest?.('[data-nd-hz]');
+    const zone = row ? Number(row.dataset.ndHz) : null;
+    this.hover(Number.isFinite(zone) ? zone : null);
   }
 
-  hover(key, zoneId) {
-    if (key !== this.preview) {
-      this.preview = key;
-      this.paint();
-    }
+  hover(zoneId) {
     this.hoverZone = zoneId;
     this.mark(zoneId);
   }
 
-  /** Bölgeyi haritada işaretler (seaLayer): üstünde durulan, yoksa odak. */
+  /** Bölgeyi haritada işaretler (seaLayer): üstünde durulan, yoksa açık kart, yoksa odak. */
   mark(zoneId) {
     const sea = this.game.renderer?.sea;
     if (!sea) return;
-    const target = this.active() ? (zoneId ?? this.focus) : null;
+    const target = this.active() ? (zoneId ?? this.sea ?? this.focus) : null;
     if (sea.highlight === target) return;
     sea.highlight = target;
+    this.game.requestRender?.();
+  }
+
+  /** Seçili filonun hedef halkası (imlecin altındaki deniz). */
+  setHoverZone(zoneId) {
+    const sea = this.game.renderer?.sea;
+    if (!sea || sea.hoverZone === zoneId) return;
+    sea.hoverZone = zoneId;
     this.game.requestRender?.();
   }
 
@@ -937,13 +948,12 @@ export class NavyDock {
     if (!this.active() || !tile?.terrain?.water || !(tile.seaZone >= 0)) return;
     const zoneId = tile.seaZone;
     this.focus = zoneId;
-    const view = this.view();
-    if (!view.rows.some((row) => row.zone.id === zoneId && !row.pinned)) this.pin = zoneId;
     const mark = seaZoneMarks(this.game.world, this.me()?.id ?? -1).get(zoneId);
     const recent = mark?.battle?.id ?? mark?.evaded?.id ?? null;
     this.card = recent;
+    // Her deniz kartı açılır (eskiden katlı "sessiz" denize tık hiçbir şey göstermiyordu).
+    this.sea = recent ? null : zoneId;
     this.refresh();
-    this.root.querySelector(`[data-nd-zone="${zoneId}"]`)?.scrollIntoView({ block: 'nearest' });
   }
 
   centerOn(zoneId) {
@@ -957,19 +967,70 @@ export class NavyDock {
     this.focus = zone?.id ?? null;
   }
 
-  /** Öncelik tıklamasının tek cümlelik onayı (HUD): plan neyi değiştirdi. */
-  orderNote(before, after, zoneId, step) {
-    const row = after.rows.find((r) => r.zone.id === zoneId);
-    if (!row) return;
-    const levelName = step === 'auto' ? 'Auto' : NAVY_PRIORITIES.find((p) => p.id === step)?.name ?? step;
-    const others = after.rows.filter((r) => r.zone.id !== zoneId).map((r) => {
-      const was = before.rows.find((b) => b.zone.id === r.zone.id)?.planned ?? 0;
-      return r.planned !== was ? `${r.zone.name} ${r.planned - was > 0 ? '+' : '−'}${Math.abs(r.planned - was)}` : null;
-    }).filter(Boolean);
-    const sail = row.pending > 0
-      ? `${plural(row.pending, 'ship')} ${row.pending === 1 ? 'sails' : 'sail'} next week${row.plannedWeeks ? ` (~${row.plannedWeeks} wk)` : ''}`
-      : `${plural(row.planned, 'ship')} planned`;
-    this.flash(`${row.zone.name}: ${levelName} — ${sail}; ${others.length ? others.join(', ') : 'other seas unchanged'}.`);
+  seaName(zoneId) {
+    return this.game.world.seaZones?.zones?.[zoneId]?.name ?? 'the sea';
+  }
+
+  /** Filo emrinin tek cümlelik makbuzu (HUD): ne oldu, ne zaman, ne bekleniyor. */
+  orderReceipt(fleetId, zoneId, mode) {
+    const view = this.view();
+    const fleet = view.fleets.find((f) => f.id === fleetId);
+    this.picking = null;
+    if (!fleet) { this.refresh(); return; }
+    if (mode === FLEET_ORDER.SEA) {
+      const row = view.rows.find((r) => r.zone.id === zoneId);
+      const forecast = fleetForecast(this.game.world, this.me(), fleet.ships, zoneId);
+      const line = forecast.reach ? forecastLine(this.game.world, forecast) : null;
+      const going = fleet.ships.length && fleet.ships.every((ship) => ship.zone === zoneId);
+      const sail = !forecast.reach ? 'no ready ship can reach it'
+        : going && forecast.weeks > 0 ? `already on the way (~${forecast.weeks} wk)`
+        : forecast.weeks > 0 ?`${plural(forecast.ships, 'ship')} ${forecast.ships === 1 ? 'sails' : 'sail'} at the end of the week (~${forecast.weeks} wk)` : 'already there';
+      this.flash(`${fleet.name} → ${row?.zone.name ?? this.seaName(zoneId)}: ${sail}${line ? ` · ${line.text}` : ''}.`);
+    } else if (mode === FLEET_ORDER.PORT) {
+      this.flash(`${fleet.name}: back to port as a reserve.`);
+    } else {
+      this.flash(`${fleet.name}: on Auto — the admiralty decides each week.`);
+    }
+    this.refresh();
+  }
+
+  onChange(event) {
+    const nation = this.me();
+    if (!nation) return;
+    const t = event.target;
+    const hold = t.closest?.('[data-nd-hold]');
+    if (hold && hold.value !== '') {
+      this.game.orderFleet(Number(hold.dataset.ndHold), FLEET_ORDER.SEA, Number(hold.value));
+      return;
+    }
+    const adm = t.closest?.('[data-nd-fadm]');
+    if (adm) {
+      const fleetId = this.realFleet(Number(adm.dataset.ndFadm));
+      assignFleetAdmiral(nation, fleetId, adm.value === '' ? null : Number(adm.value));
+      this.refresh();
+      this.game.requestRender();
+      return;
+    }
+    const merge = t.closest?.('[data-nd-merge]');
+    if (merge && merge.value !== '') {
+      const from = Number(merge.dataset.ndMerge);
+      const into = Number(merge.value);
+      const name = fleetsOf(nation)?.find((f) => f.id === into)?.name ?? 'the fleet';
+      if (mergeFleet(nation, from, into)) {
+        if (this.game.selectedFleet === from) this.game.selectFleet(into);
+        this.flash(`Merged into ${name}: its order now applies to every ship.`);
+      }
+      this.game.renderer?.sea?.touchFleets?.();
+      this.refresh();
+      this.game.requestRender();
+    }
+  }
+
+  /** Sanal filo (kimlik 0) ilk eylemde gerçek listeye çevrilir. */
+  realFleet(fleetId) {
+    if (fleetId !== 0) return fleetId;
+    const id = this.game.orderFleet(0, FLEET_ORDER.AUTO);
+    return id ?? fleetId;
   }
 
   onClick(event) {
@@ -986,27 +1047,78 @@ export class NavyDock {
       this.refresh();
       return;
     }
+    const modeBtn = t.closest?.('[data-nd-mode]');
+    if (modeBtn) {
+      const [idText, mode] = modeBtn.dataset.ndMode.split(':');
+      const fleetId = Number(idText);
+      if (mode === 'sea') {
+        // Deniz seçimi: filoyu seç (sağ tık haritada) ve listeyi aç.
+        this.game.selectFleet(fleetId);
+        this.picking = this.game.selectedFleet;
+        this.refresh();
+        return;
+      }
+      this.game.orderFleet(fleetId, mode);
+      return;
+    }
+    const pick = t.closest?.('[data-nd-pick]');
+    if (pick) {
+      const fleetId = Number(pick.dataset.ndPick);
+      const same = this.game.selectedFleet === fleetId;
+      this.game.selectFleet(same ? null : fleetId);
+      const card = this.root.querySelector(`[data-nd-fleet="${fleetId}"]`);
+      const zone = card?.dataset.ndHz;
+      if (!same && zone != null) this.centerOn(Number(zone));
+      this.refresh();
+      return;
+    }
+    const split = t.closest?.('[data-nd-split]');
+    if (split) {
+      const fleetId = this.realFleet(Number(split.dataset.ndSplit));
+      const id = splitFleet(nation, fleetId);
+      if (id != null) {
+        const fleet = fleetsOf(nation).find((f) => f.id === id);
+        this.flash(`${fleet.name} formed (${plural(fleetShips(nation, id).length, 'ship')}): select it and right-click a sea to send it.`);
+        this.game.renderer?.sea?.touchFleets?.();
+        this.game.selectFleet(id);
+      }
+      this.refresh();
+      this.game.requestRender();
+      return;
+    }
+    const send = t.closest?.('[data-nd-send]');
+    if (send) {
+      const [fleetText, zoneText] = send.dataset.ndSend.split(':');
+      this.game.orderFleet(Number(fleetText), FLEET_ORDER.SEA, Number(zoneText));
+      return;
+    }
+    if (t.closest?.('[data-nd-allauto]')) {
+      const changed = fleetsToAuto(nation);
+      this.game.renderer?.sea?.touchFleets?.();
+      this.flash(changed ? `${plural(changed, 'fleet')} back on Auto — the admiralty re-plans at the end of the week.` : 'Every fleet is on Auto already.');
+      this.refresh();
+      this.game.requestRender();
+      return;
+    }
     const pri = t.closest?.('[data-nd-pri]');
     if (pri) {
       const [zoneText, step] = pri.dataset.ndPri.split(':');
       const zoneId = Number(zoneText);
-      const before = this.view();
       setZonePriority(nation, zoneId, step);
-      if (this.pin === zoneId && step !== 'auto') this.pin = null;
-      this.preview = null;
-      const after = this.view();
-      this.orderNote(before, after, zoneId, step);
+      const levelName = step === 'auto' ? 'Auto' : NAVY_PRIORITIES.find((p) => p.id === step)?.name ?? step;
+      const row = this.view().rows.find((r) => r.zone.id === zoneId);
+      this.flash(`${row?.zone.name ?? 'Sea'}: ${levelName} for Auto fleets — ${row ? `${plural(row.planned, 'ship')} planned there` : 'the admiralty re-plans'}.`);
       this.refresh();
       this.game.requestRender?.();
       return;
     }
-    if (t.closest?.('[data-nd-quiet]')) {
-      this.quietOpen = !this.quietOpen;
+    if (t.closest?.('[data-nd-yard]')) {
+      this.fleetOpen = !this.fleetOpen;
       this.refresh();
       return;
     }
-    if (t.closest?.('[data-nd-unpin]')) {
-      this.pin = null;
+    if (t.closest?.('[data-nd-seas]')) {
+      this.seasOpen = !this.seasOpen;
       this.refresh();
       return;
     }
@@ -1026,14 +1138,15 @@ export class NavyDock {
       if (count) {
         this.game.turns?.addLog(`${count} obsolete warship${count === 1 ? '' : 's'} scrapped: the crews go home, the yards take back the steel.`, { kind: 'NAVAL', key: 'scrap' });
       }
+      this.game.renderer?.sea?.touchFleets?.();
       this.refresh();
       this.game.emit?.('economy');
       this.game.requestRender?.();
       return;
     }
-    const pick = t.closest?.('[data-nd-scrapg]');
-    if (pick) {
-      const key = pick.dataset.ndScrapg;
+    const scrapPick = t.closest?.('[data-nd-scrapg]');
+    if (scrapPick) {
+      const key = scrapPick.dataset.ndScrapg;
       clearTimeout(this.confirmTimer);
       if (this.confirmKey !== key) {
         this.confirmKey = key;
@@ -1049,6 +1162,7 @@ export class NavyDock {
         const what = group === 'sub' ? `submarine${count === 1 ? '' : 's'}` : `warship${count === 1 ? '' : 's'}`;
         this.game.turns?.addLog(`${count} ${what} scrapped: the crews go home, the yards take back the steel.`, { kind: 'NAVAL', key: 'scrap' });
       }
+      this.game.renderer?.sea?.touchFleets?.();
       this.refresh();
       this.game.emit?.('economy');
       this.game.requestRender?.();
@@ -1065,16 +1179,9 @@ export class NavyDock {
       if (!ordered) {
         const why = recruitBlockers(this.game, nation, buildBtn.dataset.ndBuild)[0]?.text;
         if (why) this.flash(why);
+      } else {
+        this.flash(`${plural(ordered, UNIT_TYPES[buildBtn.dataset.ndBuild]?.name.toLowerCase() ?? 'ship')} ordered — see the shipyard line for the date.`);
       }
-      this.refresh();
-      return;
-    }
-    if (t.closest?.('[data-nd-auto]')) {
-      const before = this.view();
-      resetZonePriorities(nation);
-      const after = this.view();
-      const changed = after.rows.filter((r) => (before.rows.find((b) => b.zone.id === r.zone.id)?.planned ?? 0) !== r.planned).length;
-      this.flash(`All seas on Auto — the admiralty re-plans at the end of the week${changed ? ` (${plural(changed, 'sea')} change)` : ''}.`);
       this.refresh();
       return;
     }
@@ -1084,15 +1191,18 @@ export class NavyDock {
       this.refresh();
       return;
     }
-    const show = t.closest?.('[data-nd-show]');
-    if (show) {
-      this.centerOn(Number(show.dataset.ndShow));
+    const seaBtn = t.closest?.('[data-nd-sea]');
+    if (seaBtn) {
+      const zoneId = Number(seaBtn.dataset.ndSea);
+      this.card = null;
+      this.sea = zoneId;
+      this.focus = zoneId;
       this.refresh();
       return;
     }
-    const focus = t.closest?.('[data-nd-focus]');
-    if (focus) {
-      this.centerOn(Number(focus.dataset.ndFocus));
+    const show = t.closest?.('[data-nd-show]');
+    if (show) {
+      this.centerOn(Number(show.dataset.ndShow));
       this.refresh();
       return;
     }
@@ -1109,6 +1219,7 @@ export class NavyDock {
     const open = t.closest?.('[data-nd-open]');
     if (open) {
       this.card = open.dataset.ndOpen;
+      this.sea = null;
       this.refresh();
       return;
     }
@@ -1120,22 +1231,23 @@ export class NavyDock {
     }
     if (t.closest?.('[data-nd-back]')) {
       this.card = null;
+      this.sea = null;
       this.refresh();
       return;
     }
     if (t.closest?.('[data-nd-close]')) {
-      document.querySelector('.mode-btn[data-mode="political"]')?.click();
+      this.game.selectFleet(null);
+      this.card = null;
+      this.sea = null;
+      if (this.active()) document.querySelector('.mode-btn[data-mode="political"]')?.click();
+      this.refresh();
     }
   }
-}
-
-function seaName(world, zoneId) {
-  return world.seaZones?.zones?.[zoneId]?.name ?? 'the sea';
 }
 
 /** Kara hedefinin adı: province (state) adı; deniz hedefinde bölge adı. */
 function placeName(world, tile) {
   if (!tile) return null;
-  if (tile.terrain?.water) return seaName(world, tile.seaZone);
+  if (tile.terrain?.water) return world.seaZones?.zones?.[tile.seaZone]?.name ?? 'the sea';
   return world.provinces?.[tile.provinceId]?.name ?? null;
 }

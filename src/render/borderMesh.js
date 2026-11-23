@@ -49,8 +49,13 @@ const CORNER_OWNER = [[5, 1], [1, 0], [-1, 1], [2, 0], [4, 1], [-1, 0]];
  */
 export const BAND_REACH = 74;
 
-/** GL dolgu eşlemesinde hex başına en fazla parça (shader döngü tavanı). */
-export const GL_MAX_PER_TILE = 64;
+/**
+ * GL dolgu eşlemesinde hex başına en fazla parça (shader döngü tavanı; döngü
+ * gerçek sayıda kırılır, tavan maliyet değildir). 64'tü: kara sınırının
+ * örnek aralığı 3.5'e inince en kalabalık hex 46 → 58 parçaya çıktı (dört
+ * tohum); taşan parça düşer ve dolgu yanlış hücreye karar verir.
+ */
+export const GL_MAX_PER_TILE = 96;
 
 /** GL parça tablosunun eni (teksel); kayıt başına iki teksel. */
 export const GL_DATA_WIDTH = 2048;
@@ -112,8 +117,6 @@ const SHAPE_CLAMP = 14;
 const MEANDER_CLAMP = 17;
 /** Açık zincirde uçlara doğru sönme boyu: kavşak yerinde kalır, komşular buluşur. */
 const SHAPE_TAPER = 26;
-/** Kıvrım genliği: süzgecin sildiği düzensizliğin yerine konuma bağlı olanı. */
-const MEANDER_AMP = 13;
 /**
  * Kıyıda süzgeç dar, kıvrım geniş: sınırın süzgeci kıyıya uygulanınca eğri hex yolundan
  * %11 kısa kalıyor, koy ve burun silinip sahil cetvelle çekilmiş gibi duruyordu.
@@ -121,6 +124,33 @@ const MEANDER_AMP = 13;
  */
 const COAST_SIGMA = 12;
 const COAST_MEANDER_AMP = 20;
+
+/**
+ * KARA SINIRI FRAKTALI (2026-11-23, Kerem: "girinti çıkıntı az kalıyor").
+ * Eski kara eğrisi hex yolundan %7 KISA çıkıyordu (ölçüldü: 0.93): süzgeç
+ * dişi silip yerine yalnız yumuşak bir dalga koyuyordu, sınır cetvelle
+ * yuvarlatılmış hex lekesi gibi okunuyordu. Gerçek sınırın girintisi her
+ * ölçekte vardır; burada üç hexten çeyrek hexe beş oktav, genlik ince ölçeğe
+ * doğru azalır (kıyı çizgisi gibi kendine benzer, ama kıyıdan bir tık sakin).
+ * İnce oktav için örnek aralığı daralır (3.5 birim; hücre 8 → örnek başına 2.3).
+ * Ölçü: kara eğrisinin hex yoluna oranı 0.93 → 1.0, ortalama sapma 7 → 9.8.
+ *
+ * Kıvrım yerin karakterine bağlıdır (kenarın iki hexinden, yay boyunca
+ * yumuşatılmış): nehir kenarı nehir gibi geniş ve yumuşak kıvrılır (ince
+ * oktav kısılır, kaba açılır; nehir de aynı eğriden çizildiği için sınır
+ * nehre yapışık kalır), dağ ve tepe kenarı sırt gibi kırık ve dişli.
+ *
+ * Kenetleme yumuşaktır: sapmanın üst sınırı LAND_KNEE'yi aşınca kıvrım tanh
+ * ile MEANDER_CLAMP'e sıkışır. Sert kenetleme sapmayı hex yolunun 17
+ * birimlik paralel ötelemesine yapıştırır; eğri orada yine hex biçimini
+ * çizer. Üst sınır aynı (bkz. SINIR KANITI): hiçbir hex merkezi karşı tarafa
+ * geçmez. Sıkı dönemeçte atılan ilmek ayrıca budanır (untangle).
+ */
+const LAND_STEP = 3.5;
+const LAND_AMP = 20;
+const LAND_KNEE = 12;
+/** [hücre boyu, genlik, y kayması, karakter: 0 kaba (nehir açar), 1 orta, 2 ince (dağ açar, nehir kısar)] */
+const LAND_OCTAVES = [[150, 0.60, 0, 0], [70, 0.75, 17.3, 0], [33, 0.60, -41.9, 1], [16, 0.40, 63.7, 2], [8, 0.25, 29.1, 2]];
 
 // Ara tamponlar: zincir başına dizi ayırmak kurulumun üçte birini
 // tahsisata harcıyordu.
@@ -132,6 +162,8 @@ let BUF_SEG = new Int32Array(4096);
 let BUF_S = new Float64Array(4096);
 let BUF_D = new Float64Array(4096);
 let BUF_T = new Float64Array(4096);
+let BUF_R = new Float64Array(4096);
+let BUF_G = new Float64Array(4096);
 
 function ensureBuffers(n) {
   if (BUF_X.length >= n) return;
@@ -144,6 +176,8 @@ function ensureBuffers(n) {
   BUF_S = new Float64Array(size);
   BUF_D = new Float64Array(size);
   BUF_T = new Float64Array(size);
+  BUF_R = new Float64Array(size);
+  BUF_G = new Float64Array(size);
 }
 
 /**
@@ -217,9 +251,11 @@ function valueNoise(x, y, period) {
 }
 
 /**
- * Oktavlar: [hücre boyu, genlik, y kayması] — ~3 hexlik kıvrım, ~1 hexlik dalga,
- * kırık, diş. Son iki oktav gerçek sınırların girintisini verir; hücre boyu
- * örnek aralığının (SHAPE_STEP) iki katının altına inerse diş örtüşmeye döner.
+ * KIYI kıvrımının oktavları: [hücre boyu, genlik, y kayması] — ~3 hexlik
+ * kıvrım, ~1 hexlik dalga, kırık, diş; hücre boyu örnek aralığının
+ * (SHAPE_STEP) iki katının altına inerse diş örtüşmeye döner. Kara sınırı
+ * kendi oktavlarını kullanır (LAND_OCTAVES); kıyı denizin uzaklık alanını
+ * beslediği için aynen kalır.
  */
 const MEANDER_OCTAVES = [[130, 0.55, 0], [48, 0.36, 17.3], [21, 0.3, -41.9], [10, 0.2, 63.7]];
 
@@ -243,6 +279,34 @@ function meanderNoise(x, y, P) {
 let NOISE_P = -1;
 const NOISE_N = new Int32Array(MEANDER_OCTAVES.length);
 const NOISE_C = new Float64Array(MEANDER_OCTAVES.length);
+
+/**
+ * Kara sınırının kıvrımı (bkz. KARA SINIRI FRAKTALI). river/rugged 0..1:
+ * nehir kaba oktavları açar ve ince olanları kısar, sırt ince olanları açar.
+ */
+function landNoise(x, y, P, river, rugged) {
+  if (P !== LAND_P) {
+    LAND_P = P;
+    for (let k = 0; k < LAND_OCTAVES.length; k++) {
+      const cell = LAND_OCTAVES[k][0];
+      LAND_N[k] = P ? Math.max(1, Math.round(P / cell)) : 0;
+      LAND_C[k] = P ? P / LAND_N[k] : cell;
+    }
+  }
+  const coarse = 1 + 0.35 * river;
+  const fine = (0.75 + 0.6 * rugged) * (1 - 0.65 * river);
+  let v = 0;
+  for (let k = 0; k < LAND_OCTAVES.length; k++) {
+    const o = LAND_OCTAVES[k];
+    const g = o[3] === 0 ? coarse : o[3] === 2 ? fine : 1;
+    const c = LAND_C[k];
+    v += valueNoise(x / c, y / c + o[2], LAND_N[k]) * o[1] * g;
+  }
+  return v;
+}
+let LAND_P = -1;
+const LAND_N = new Int32Array(LAND_OCTAVES.length);
+const LAND_C = new Float64Array(LAND_OCTAVES.length);
 
 const NEAR = new Float64Array(3);
 
@@ -295,9 +359,11 @@ function clampToPath(H, closed, seg, x, y, limit) {
 /**
  * Hex kenarı yolundan doğal sınır eğrisi (bkz. EĞRİ BİÇİMİ). Açık zincirin
  * uçları birebir H'nin uçlarıdır. `P`: sarmal periyodu (gürültü sarması).
- * `coast`: kara-deniz zinciri (bkz. COAST_SIGMA).
+ * `coast`: kara-deniz zinciri (bkz. COAST_SIGMA); kıyı eski kuralla aynen
+ * kurulur (deniz katmanları ondan pişer). Kara zinciri KARA SINIRI FRAKTALI
+ * kuralıyla; `charSeg` H parçası başına [nehir, sırt] (0..1).
  */
-function shapeChain(H, closed, P, coast = false) {
+function shapeChain(H, closed, P, coast = false, charSeg = null) {
   const m = H.length / 2;
   if (m < 2) return H;
   const segs = closed ? m : m - 1;
@@ -307,7 +373,7 @@ function shapeChain(H, closed, P, coast = false) {
     total += Math.sqrt((H[j * 2] - H[i * 2]) ** 2 + (H[j * 2 + 1] - H[i * 2 + 1]) ** 2);
   }
   if (total < 1e-6) return H;
-  const count = Math.max(closed ? 6 : 1, Math.round(total / SHAPE_STEP));
+  const count = Math.max(closed ? 6 : 1, Math.round(total / (coast ? SHAPE_STEP : LAND_STEP)));
   const n = closed ? count : count + 1;
   ensureBuffers(n + 2);
   const X = BUF_X;
@@ -316,6 +382,8 @@ function shapeChain(H, closed, P, coast = false) {
   const GY = BUF_GY;
   const SEG = BUF_SEG;
   const S = BUF_S;
+  const R = BUF_R;
+  const G = BUF_G;
 
   // 1. Eşit aralıklı örnekleme; her örneğin kaynak parçası kenetleme içindir.
   let seg = 0;
@@ -335,6 +403,18 @@ function shapeChain(H, closed, P, coast = false) {
     Y[k] = H[seg * 2 + 1] + (H[j * 2 + 1] - H[seg * 2 + 1]) * t;
     SEG[k] = seg;
     S[k] = s;
+    if (charSeg) {
+      // Karakter parça ortasında parçanın, aralarda iki komşu parçanın
+      // doğrusal karışımı (parça değerleri çağıranda yumuşatıldı).
+      const near = t < 0.5 ? seg - 1 : seg + 1;
+      const o = closed ? ((near % segs) + segs) % segs : Math.max(0, Math.min(segs - 1, near));
+      const f = Math.abs(t - 0.5);
+      R[k] = charSeg[seg * 2] * (1 - f) + charSeg[o * 2] * f;
+      G[k] = charSeg[seg * 2 + 1] * (1 - f) + charSeg[o * 2 + 1] * f;
+    } else {
+      R[k] = 0;
+      G[k] = 0;
+    }
   }
 
   // 2. Yay boyunca Gauss yaklaşığı: üç kutu geçişi (kayan toplam, O(n)).
@@ -394,20 +474,50 @@ function shapeChain(H, closed, P, coast = false) {
     }
     const x = out[k * 2];
     const y = out[k * 2 + 1];
-    const off = (coast ? COAST_MEANDER_AMP : MEANDER_AMP) * w * meanderNoise(x, y, P);
+    let off;
+    if (coast) off = COAST_MEANDER_AMP * w * meanderNoise(x, y, P);
+    else {
+      off = LAND_AMP * w * landNoise(x, y, P, R[k], G[k]);
+      // Yumuşak kenetleme kıvrımın KENDİSİNİ sıkıştırır (sapmanın üst sınırı
+      // D + |off| üzerinden): yol boyunca süreklidir. Noktayı en yakın hex
+      // kenarına çekmek V köşesinin iç yanında komşu örnekleri iki ayrı
+      // kenara itip eğriyi kendi üstüne katlıyordu.
+      const tot = D[k] + Math.abs(off);
+      if (tot > LAND_KNEE) {
+        const span = MEANDER_CLAMP - LAND_KNEE;
+        const soft = LAND_KNEE + span * Math.tanh((tot - LAND_KNEE) / span);
+        const room = Math.max(0, soft - D[k]);
+        off = Math.sign(off) * Math.min(Math.abs(off), room);
+      }
+    }
     GX[k] = x - ty * off;
     GY[k] = y + tx * off;
     D[k] += Math.abs(off);
   }
-  for (let k = 0; k < n; k++) {
-    if (D[k] <= MEANDER_CLAMP) {
-      out[k * 2] = GX[k];
-      out[k * 2 + 1] = GY[k];
-      continue;
+  if (coast) {
+    for (let k = 0; k < n; k++) {
+      if (D[k] <= MEANDER_CLAMP) {
+        out[k * 2] = GX[k];
+        out[k * 2 + 1] = GY[k];
+        continue;
+      }
+      clampToPath(H, closed, SEG[k], GX[k], GY[k], MEANDER_CLAMP);
+      out[k * 2] = CLAMPED[0];
+      out[k * 2 + 1] = CLAMPED[1];
     }
-    clampToPath(H, closed, SEG[k], GX[k], GY[k], MEANDER_CLAMP);
-    out[k * 2] = CLAMPED[0];
-    out[k * 2 + 1] = CLAMPED[1];
+  } else {
+    // Kıvrım yukarıda sıkıştırıldı: sapma MEANDER_CLAMP'i aşamaz, kenetleme
+    // yalnız güvenlik payı (kıyının sert kuralıyla aynı arama).
+    for (let k = 0; k < n; k++) {
+      if (D[k] <= MEANDER_CLAMP) {
+        out[k * 2] = GX[k];
+        out[k * 2 + 1] = GY[k];
+        continue;
+      }
+      clampToPath(H, closed, SEG[k], GX[k], GY[k], MEANDER_CLAMP);
+      out[k * 2] = CLAMPED[0];
+      out[k * 2 + 1] = CLAMPED[1];
+    }
   }
   if (!closed) {
     // Uçlar birebir kavşak noktası: kayan nokta payı bile birleşimi açmasın.
@@ -416,7 +526,82 @@ function shapeChain(H, closed, P, coast = false) {
     out[(n - 1) * 2] = H[(m - 1) * 2];
     out[(n - 1) * 2 + 1] = H[(m - 1) * 2 + 1];
   }
-  return out;
+  return coast ? out : untangle(out, closed);
+}
+
+/**
+ * Yerel ilmek budaması. Sıkı bir dönemecin iç yanında normal boyunca kıvrım
+ * eğrinin eğrilik yarıçapını aşınca eğri kendi üstüne ilmek atar (kırlangıç
+ * kuyruğu); ilmeğin içi iki bölgeye birden düşer ve dolgu tablosunun "son
+ * kesilen parça" kuralı orada yanlış hücreye karar verir (ölçüldü: 32 zincir).
+ * Kesişen iki parça arasındaki örnekler atılır, yerine kesişim noktası girer.
+ * Pencere dar: ilmekler birkaç örneklik, uzak parçaları aramak gereksiz.
+ */
+const UNTANGLE_WINDOW = 10;
+
+function untangle(pts, closed) {
+  let n = pts.length / 2;
+  if (n < 4) return pts;
+  let x = pts;
+  let changed = false;
+  for (let i = 0; i < n - 1; i++) {
+    const ax = x[i * 2]; const ay = x[i * 2 + 1];
+    const bx = x[i * 2 + 2]; const by = x[i * 2 + 3];
+    const jEnd = Math.min(n - 1, i + UNTANGLE_WINDOW);
+    const lx = Math.min(ax, bx); const hx = Math.max(ax, bx);
+    const ly = Math.min(ay, by); const hy = Math.max(ay, by);
+    for (let j = i + 2; j < jEnd; j++) {
+      const cx = x[j * 2]; const cy = x[j * 2 + 1];
+      const dx = x[j * 2 + 2]; const dy = x[j * 2 + 3];
+      if ((cx < lx && dx < lx) || (cx > hx && dx > hx) || (cy < ly && dy < ly) || (cy > hy && dy > hy)) continue;
+      const rx = bx - ax; const ry = by - ay;
+      const sx = dx - cx; const sy = dy - cy;
+      const den = rx * sy - ry * sx;
+      if (Math.abs(den) < 1e-12) continue;
+      const qx = cx - ax; const qy = cy - ay;
+      const t = (qx * sy - qy * sx) / den;
+      const u = (qx * ry - qy * rx) / den;
+      if (t <= 0 || t >= 1 || u <= 0 || u >= 1) continue;
+      // i+1..j atılır, kesişim noktası girer: n − (j − i) + 1 örnek.
+      if (!changed) { x = Float64Array.from(x); changed = true; }
+      x[(i + 1) * 2] = ax + rx * t;
+      x[(i + 1) * 2 + 1] = ay + ry * t;
+      x.copyWithin((i + 2) * 2, (j + 1) * 2, n * 2);
+      n -= j - i - 1;
+      break;
+    }
+  }
+  return changed ? x.slice(0, n * 2) : pts;
+}
+
+/** Kara zincirinin kenar karakteri tamponu (bkz. shapeChain charSeg). */
+let CHAR_BUF = new Float64Array(1024);
+
+/**
+ * Kenar karakterinin parçalar boyunca yumuşatılması (iki kez 1-2-1, ~bir
+ * kenar boyu): nehir ağzında ya da dağ eteğinde kıvrımın dili birden
+ * değişmesin. Kapalı zincir sarar, açık zincirin ucu kendini tekrarlar.
+ */
+function smoothChar(buf, E, closed) {
+  if (E < 2) return;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let c = 0; c < 2; c++) {
+      const first = buf[c];
+      let prev = closed ? buf[(E - 1) * 2 + c] : first;
+      for (let s = 0; s < E; s++) {
+        const cur = buf[s * 2 + c];
+        const next = s + 1 < E ? buf[(s + 1) * 2 + c] : closed ? first : cur;
+        buf[s * 2 + c] = (prev + 2 * cur + next) * 0.25;
+        prev = cur;
+      }
+    }
+  }
+}
+
+/** Sırt payı: dağ ve zirve tam, tepe yarıdan fazla, ova sıfır. */
+function ruggedOf(tile) {
+  const id = tile.terrain?.id;
+  return id === 'MOUNTAIN' || id === 'SNOW_PEAK' ? 1 : id === 'HILLS' ? 0.6 : 0;
 }
 
 function bboxOf(pts, box = [Infinity, Infinity, -Infinity, -Infinity]) {
@@ -629,8 +814,22 @@ export function buildBorderMesh(world, groupOf, keys = null) {
     // Harita kenarı (kutup) hex kenarında kalır; kara-kara ve kara-deniz
     // zincirleri yumuşar ve kıvrılır. Kıyı da artık yumuşak: hex dişli
     // sahil, yumuşak sınırların yanında haritanın en petek parçasıydı.
-    if (land || ch.pos === SEA || ch.neg === SEA) {
-      ch.S = shapeChain(ch.H, ch.closed, P, !land);
+    if (land) {
+      // Kenar başına karakter: nehir kenarı mı, iki yanında dağ/tepe var mı.
+      const E = ch.edges.length;
+      if (CHAR_BUF.length < E * 2) CHAR_BUF = new Float64Array(E * 4);
+      for (let s = 0; s < E; s++) {
+        const ref = ch.edges[s];
+        const ee = ref >= 0 ? ref : ~ref;
+        const a = tiles[eTile[ee]];
+        const b = eOther[ee] >= 0 ? tiles[eOther[ee]] : null;
+        CHAR_BUF[s * 2] = (a.riverMask >> eDir[ee]) & 1;
+        CHAR_BUF[s * 2 + 1] = Math.max(ruggedOf(a), b ? ruggedOf(b) : 0);
+      }
+      smoothChar(CHAR_BUF, E, ch.closed);
+      ch.S = shapeChain(ch.H, ch.closed, P, false, CHAR_BUF);
+    } else if (ch.pos === SEA || ch.neg === SEA) {
+      ch.S = shapeChain(ch.H, ch.closed, P, true);
     } else {
       ch.S = ch.H;
     }

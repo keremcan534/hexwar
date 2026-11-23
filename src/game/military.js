@@ -31,7 +31,7 @@ import {
 } from './recruitment.js';
 import { BASE_REINFORCEMENT_RATE, reinforcementNeed } from './reinforcement.js';
 import { seaZonesOf } from '../world/seaZones.js';
-import { classIndexOf } from './navy.js';
+import { classIndexOf, fleetById } from './navy.js';
 import {
   LEVEE, MOBILIZATION, conscriptUnits, isMobilized, leveeActive, leveeBlockers, leveeTarget, militiaUnits,
   mobilizationBlockers, mobilizationTarget,
@@ -425,10 +425,12 @@ export function commandRoster(world, nation) {
 }
 
 function admiralPost(world, nation, general) {
-  if (general.seaZone == null) return 'In port';
+  // Filoya bağlı amiral filosunun adıyla görünür (donanma paneli bağlar).
+  const fleet = general.fleetPin != null ? fleetById(nation, general.fleetPin) : null;
+  if (general.seaZone == null) return fleet ? `${fleet.name} · in port` : 'In port';
   const zone = seaZonesOf(world).zones[general.seaZone];
   const ships = (nation.navy?.ships ?? []).filter((ship) => ship.at === general.seaZone).length;
-  return `${zone?.name ?? 'At sea'} · ${ships} ${ships === 1 ? 'ship' : 'ships'}`;
+  return `${fleet ? `${fleet.name} · ` : ''}${zone?.name ?? 'At sea'} · ${ships} ${ships === 1 ? 'ship' : 'ships'}`;
 }
 
 /** Komutanı olmayan tümenler — otomatik dağıtım kapalıyken oyuncunun işi. */

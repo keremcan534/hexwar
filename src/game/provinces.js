@@ -189,6 +189,11 @@ export function setProvinceOwner(world, province, nationId) {
   // Şikâyet eski yönetime karşıydı: yeni sahiple sayaç sıfırdan başlar
   // (culture.accrueGrievance).
   if (province.owner !== nationId && province.econ) province.econ.grievance = 0;
+  // İsyan sayacı da eski sahibe karşı birikmişti. Halk kanalı onu zaten
+  // sıfırlıyordu ama barış devri taşıyordu: eşiği (26) aşmış küme yeni
+  // sahibine ertesi hafta ayaklanabiliyordu, tek halklı ulus da başkasının
+  // sayacını devralıyordu (culture-unrest TEST 1, 2026-11-23).
+  if (province.owner !== nationId && province.econ) province.econ.revoltWeeks = 0;
   province.owner = nationId;
 }
 

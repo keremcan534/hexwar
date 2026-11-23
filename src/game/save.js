@@ -141,6 +141,10 @@ function copyPeaceOffer(entry) {
 // isteğe bağlıdır, simülasyon onu okumaz. Alanı olmayan kayıt aynen yüklenir ve
 // tekrar yükleme ayından başlar; sürümü artırmak bütün v28 kampanyalarını
 // reddederdi.
+//
+// 28+: KÜLTÜR ÜRETECİ SÜRÜMÜ (genOptions.cultureGen; world/cultures.js). Sürüm
+// ARTMADI: v22 provinceGen deseni. Alanı olmayan v28 kaydı cultureGen 1 ile,
+// yani kendi halk haritasıyla kurulur; kültür izi (cultureChecksum) tutar.
 export const SAVE_VERSION = 28;
 /** Göçü bilinen eski sürümler: deserialize bunları da kabul eder. */
 const MIGRATABLE_VERSIONS = new Set([]);
@@ -374,8 +378,11 @@ export function serialize(game) {
         })),
       };
       for (const f of NATION_FIELDS) out[f] = n[f];
-      // Uyanan isyanci devletin baskenti uretimden degil ayaklanmadan gelir.
-      if (n.archetype === 'rebel' && n.capital) out.capitalAt = [n.capital.q, n.capital.r];
+      // Baskent uretimden gelmeyebilir: uyanan isyanci devletinki ayaklanmadan,
+      // ezici zaferde baskentini yitirenin ki barisin tasimasindan
+      // (peace.relocateCapital). Yazilmazsa yuklemede uretimdeki eski
+      // kareye doner ve yuklenen oyun devam edenden ayrisir.
+      if (n.capital) out.capitalAt = [n.capital.q, n.capital.r];
       return out;
     }),
     relations: world.relations.map((row, a) => row.map((rec, b) => (
@@ -511,7 +518,10 @@ export function deserialize(game, data) {
   // bolumlemesiyle yazilmistir (bkz. provinces-gen PROVINCE_GEN_LATEST).
   // Earth bolge kurali da ayni desen: alani olmayan Earth kaydi kalibrasyondan
   // once baslamistir (bkz. world/earthRules.js EARTH_RULES_LATEST).
-  const options = { provinceGen: 1, ...data.options };
+  // Ülke toprağı ve kültür üreteçleri aynı desende: alanı olmayan kayıt v1 sınırlarıyla ve
+  // etnik mozaikten önceki halk haritasıyla başlamıştır (nations.NATION_GEN_LATEST,
+  // cultures.CULTURE_GEN_LATEST).
+  const options = { provinceGen: 1, nationGen: 1, cultureGen: 1, ...data.options };
   if (options.map === 'earth') options.earthRules ??= 1;
 
   // Bölümleme parmak izi tutmuyorsa worldgen kaymış demektir: econ satırları
@@ -580,6 +590,7 @@ export function deserialize(game, data) {
     const since = province.econ?.ownedSince;
     const focus = province.econ?.focus ?? null;
     const grievance = province.econ?.grievance;
+    const revoltWeeks = province.econ?.revoltWeeks;
     refreshProvinceOwner(world, province);
     if (Number.isFinite(since)) province.econ.ownedSince = since;
     // State odağı da: setProvinceOwner sahip değişince onu siler (yeni sahibin
@@ -589,6 +600,9 @@ export function deserialize(game, data) {
     // Biriken şikâyet de aynı sebeple (setProvinceOwner sıfırlar): yoksa
     // fethedilmiş state'lerin yılları yüklemede siliniyordu (audit:save).
     if (province.econ && Number.isFinite(grievance)) province.econ.grievance = grievance;
+    // İsyan sayacı da (2026-11-23'ten beri setProvinceOwner sıfırlar): yoksa yüklenen oyunda
+    // kaynayan state'in sayacı silinip ayaklanma haftalarca ertelenirdi (audit:save).
+    if (province.econ && Number.isFinite(revoltWeeks)) province.econ.revoltWeeks = revoltWeeks;
   }
 
   // 4) Uluslar

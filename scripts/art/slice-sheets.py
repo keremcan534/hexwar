@@ -23,6 +23,15 @@ SHEETS = [
      'invested,industry,consumer_goods,exports,bills,development_fund,supply,literacy'),
     ('arayuz/gosterge-gercek-3.webp', 'assets/icons/kpi-real', '4x2', 256,
      'standing_army,peoples,full_citizens,unrest,researching,allies,army_draws,officers'),
+    # §24-25 çerçeve armaları ve süsleri (ekran penceresinin tepesi, köşeler, ayraç).
+    # İlk set (parlak pirinç) v1'de saklıdır; oyundaki cilalı bronz settir (Kerem: "polishlenmiş
+    # armalar eskisinden daha iyi").
+    ('arayuz/arma-1.webp', 'assets/ui/crest/v1', '2x3', 720, 'eagle,wheat,shield,gear,sabres,anchor'),
+    ('arayuz/arma-2.webp', 'assets/ui/crest/v1', '2x3', 720, 'corner,divider,finial,keystone,pendant,wings'),
+    ('arayuz/arma-1-cilali.webp', 'assets/ui/crest', '2x3', 720, 'eagle,wheat,shield,gear,sabres,anchor'),
+    ('arayuz/arma-2-cilali.webp', 'assets/ui/crest', '2x3', 720, 'corner,divider,finial,keystone,pendant,wings'),
+    # §23 saat bloğu: ceviz plaka, takvim yaprağı, telgraf kadranı, ibre, oynat/duraklat.
+    ('arayuz/saat-blogu.webp', 'assets/ui/clock', '3x2', 720, 'plate,calendar,dial,needle,play,pause'),
     ('arayuz/sekme-simgeleri.webp', 'assets/icons/tabs-flat', '4x3', 192, 'construction,industry,trade,budget,military,population,cultures,politics,technology,chronicle,diplomacy,navy'),
     ('tech/teknoloji-sanayi-altyapi.webp', 'assets/tech-flat', '5x4', 256, 'electric_motors,assembly_line,mass_production,machine_tools,flow_production,electric_steel,refined_petroleum,industrial_chemistry,light_alloys,synthetic_fuel,trunk_lines,motor_lorries,paved_highways,electrified_railways,motorised_logistics,steam_threshers,agricultural_colleges,tractors,hybrid_crops,mechanised_agriculture'),
     ('tech/teknoloji-ordu.webp', 'assets/tech-flat', '4x4', 256, 'fire_and_movement,trench_warfare,infiltration_tactics,combined_arms,mobile_warfare,smokeless_powder,light_machine_guns,landships,light_tanks,medium_tanks,observation_balloons,military_aviation,fighter_aircraft,metal_airframes,close_air_support,monoplane_fighters'),
@@ -137,6 +146,33 @@ def slice_effects():
         print('efekt', name, strip.size)
 
 
+def finish_crests(out_dir):
+    """Arma dilimleri: magenta sızıntısı, köşe süsünün aynaları, ekran boyuna küçültme.
+
+    Pirinçte mavi yeşilin altındadır; mavisi yeşilini geçen piksel magenta sızıntısıdır
+    (buğday başağının ucu morumsu kalıyordu). Ekranda en çok ~120 px gösterilir: 720'lik
+    dilim 400'e iner. Köşe süsü tek resimdir, öteki üç köşe aynadır.
+    """
+    import numpy as np
+    for name in sorted(os.listdir(out_dir)):
+        if not name.endswith('.webp') or name.startswith('corner-'):
+            continue
+        path = os.path.join(out_dir, name)
+        a = np.array(Image.open(path).convert('RGBA')).astype(np.float32)
+        r, g, b = a[..., 0], a[..., 1], a[..., 2]
+        m = b > g * 0.92
+        b[m] = g[m] * 0.7
+        r[m] = np.minimum(r[m], g[m] * 1.25)
+        im = Image.fromarray(a.clip(0, 255).astype(np.uint8))
+        im.thumbnail((400, 400), Image.LANCZOS)
+        im.save(path, 'WEBP', quality=92, method=6)
+    corner = os.path.join(out_dir, 'corner.webp')
+    if os.path.exists(corner):
+        im = Image.open(corner).convert('RGBA')
+        for suffix, op in (('tr', Image.FLIP_LEFT_RIGHT), ('bl', Image.FLIP_TOP_BOTTOM), ('br', Image.ROTATE_180)):
+            im.transpose(op).save(os.path.join(out_dir, f'corner-{suffix}.webp'), 'WEBP', quality=92, method=6)
+
+
 if __name__ == '__main__':
     import sys
     only = sys.argv[1:]
@@ -149,6 +185,8 @@ if __name__ == '__main__':
         slice_magenta(os.path.join(INC, src), os.path.join(ROOT, out), grid, size, names)
         if out.endswith('arrows'):
             finish_arrows(os.path.join(ROOT, out))
+        if '/crest' in out:
+            finish_crests(os.path.join(ROOT, out))
     if not only:
         slice_logo()
         slice_effects()

@@ -211,9 +211,83 @@ function drawArms(ctx, cx, cy, s, shield, emblem, plain) {
   if (crowned) drawCrown(ctx, cx, top - s * 0.1, s * 0.34, '#d3a33c', plain);
 }
 
-function drawCharge(ctx, flag, cx, cy, size, plain) {
+/**
+ * SAVAŞ SANCAĞI (Kerem 2026-11-23: "arma varsa bayrakta Osmanlı'nın yaptığı gibi hilali
+ * tersine çeviriyorlar ya, öyle şeyler ruh katardı"). Barışta bayrak aynıdır; savaşta
+ * yalnız ÇİZİM değişir, tarif (world/flags.js) ve dünya zarı aynı kalır. Hilal aynada
+ * döner (açık ucu öbür yana bakar); başka simgenin ardına çapraz kılıç girer; simgesiz
+ * bayrağın gönder tarafı üst köşesine kılıç işlenir.
+ */
+function drawSabres(ctx, cx, cy, s, color, plain) {
+  const p = new Path2D();
+  for (const side of [-1, 1]) {
+    // Kabza altta yanda, uç karşı üst köşede; bıçak dışa doğru kavislenir.
+    const hx = cx + side * s * 0.34;
+    const hy = cy + s * 0.32;
+    const tx = cx - side * s * 0.44;
+    const ty = cy - s * 0.46;
+    const dx = tx - hx;
+    const dy = ty - hy;
+    const len = Math.hypot(dx, dy);
+    const ux = dx / len;
+    const uy = dy / len;
+    const nx = -uy;
+    const ny = ux;
+    const bend = len * 0.12 * side;
+    const mx = hx + dx * 0.55 + nx * bend;
+    const my = hy + dy * 0.55 + ny * bend;
+    // Bıçak kabzada geniş, uca doğru incelir; küçük bayrakta da seçilsin diye kalın.
+    const bw = s * 0.05;
+    p.moveTo(hx + nx * bw, hy + ny * bw);
+    p.quadraticCurveTo(mx + nx * bw * 0.9, my + ny * bw * 0.9, tx, ty);
+    p.quadraticCurveTo(mx - nx * bw * 0.4, my - ny * bw * 0.4, hx - nx * bw, hy - ny * bw);
+    p.closePath();
+    // Balçak: bıçağa dik çubuk.
+    const gl = s * 0.13;
+    const gt = s * 0.032;
+    p.moveTo(hx + nx * gl + ux * gt, hy + ny * gl + uy * gt);
+    p.lineTo(hx - nx * gl + ux * gt, hy - ny * gl + uy * gt);
+    p.lineTo(hx - nx * gl - ux * gt, hy - ny * gl - uy * gt);
+    p.lineTo(hx + nx * gl - ux * gt, hy + ny * gl - uy * gt);
+    p.closePath();
+    // Kabza ve topuz.
+    const gw = s * 0.032;
+    const bx = hx - ux * s * 0.12;
+    const by = hy - uy * s * 0.12;
+    p.moveTo(hx + nx * gw, hy + ny * gw);
+    p.lineTo(bx + nx * gw, by + ny * gw);
+    p.lineTo(bx - nx * gw, by - ny * gw);
+    p.lineTo(hx - nx * gw, hy - ny * gw);
+    p.closePath();
+    const pr = s * 0.045;
+    const px = bx - ux * pr;
+    const py = by - uy * pr;
+    p.moveTo(px + pr, py);
+    p.arc(px, py, pr, 0, Math.PI * 2);
+  }
+  ctx.fillStyle = paint(ctx, color, cy - s / 2, cy + s / 2, plain);
+  ctx.fill(p);
+  if (!plain) {
+    ctx.lineWidth = Math.max(0.7, s * 0.03);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.lineJoin = 'round';
+    ctx.stroke(p);
+  }
+}
+
+function drawCharge(ctx, flag, cx, cy, size, plain, war = false) {
   const kind = flag.charge;
   const color = flag.emblem;
+  if (war && kind === 'crescent') {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(-1, 1);
+    ctx.translate(-cx, -cy);
+    drawCrescent(ctx, cx, cy, size, color, plain);
+    ctx.restore();
+    return;
+  }
+  if (war) drawSabres(ctx, cx, cy, size * 1.45, color, plain);
   switch (kind) {
     case 'crown': drawCrown(ctx, cx, cy + size * 0.06, size * 0.9, color, plain); break;
     case 'sun': drawSun(ctx, cx, cy, size, color, plain); break;
@@ -267,8 +341,9 @@ export function drawFlag(ctx, flag, x, y, w, h, options = {}) {
   ctx.rect(x, y, w, h);
   ctx.clip();
 
+  const war = Boolean(options.war);
   const charge = (cx, cy, size) => {
-    if (flag.charge) drawCharge(ctx, flag, cx, cy, size, plain);
+    if (flag.charge) drawCharge(ctx, flag, cx, cy, size, plain, war);
   };
 
   switch (flag.pattern) {
@@ -461,6 +536,10 @@ export function drawFlag(ctx, flag, x, y, w, h, options = {}) {
       ctx.fillStyle = a;
       ctx.fillRect(x, y, w, h);
   }
+  // Simgesiz bayrağın savaş işareti gönder tarafı üst köşede: bantların ortasına
+  // konan bir kılıç bayrağın kimliğini bozuyordu; köşe her düzende boştur ya da
+  // kantondur. Rengi bayrağın kendi süs rengi.
+  if (war && !flag.charge) drawSabres(ctx, x + h * 0.3, y + h * 0.3, h * 0.5, e, plain);
 
   ctx.restore();
   // İnce çerçeve: açık zeminli bayraklar arka planda kaybolmasın. Kalınlık

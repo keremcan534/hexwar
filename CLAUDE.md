@@ -74,6 +74,14 @@ Mimari ve tasarım kararları için [README.md](README.md).
   seçili hâli o kategorinin emaye dokusudur (`assets/ui/skin/kat/`, `scripts/art/accent-skin.py`
   CATEGORIES). Yeni seçim grubu eklersen bir kategoriye bağla. Gösterge kartlarının ve üst
   çubuğun madalyonları ultra gerçekçi settir (`assets/icons/kpi-real`, `art.js REAL_KPI`).
+- Arayüzün süsleri resimdir, CSS boyası değil (Kerem: "Paint'ten gibi"): çerçeve armaları ve
+  köşe süsleri `assets/ui/crest/` (URETIM-LISTESI §24-25; yalnız üstü boş yüzen panele ve
+  pencere köşesine, hiçbir denetimin üstüne binmez), komutan kartı düğme 9 dilimidir.
+  İktidar partisinin rengi üst çubuğa ve başlık elmaslarına ince bir cam olarak düşer
+  (`ui/partyTint.js`, Settings → Display → Party colour). Künyedeki bayrak gönderde serbest
+  dalgalanır (flagWave `banner`). Oyuncu yeni savaşa girince sekme şeridinin altından savaş
+  sancakları iner (`ui/warBanners.js`); savaşta bayrak savaş biçiminde çizilir (flagPainter
+  `drawFlag(..., {war})`: hilal ters, simgenin ardında kılıç). Hepsi yalnız görünüştür.
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.
@@ -131,6 +139,7 @@ varsayılmaz, ÖLÇÜLÜR:
     npm run audit:military-industry  # yedek, seferberlik, hat kullanımı, zırh/hava, tüketim malı
     npm run audit:diplomacy    # sözler, talepler, vassal özerkliği (--active: oyuncu kaldıraçları, --size=160x96)
     npm run audit:replay       # tekrar kaydı: kare doğruluğu, kayıt boyu, hafta yükü, simülasyon aynı mı
+    npm run audit:war-end      # barıştan sonra yabancı toprakta tümen, uzak çıkarma, barış başına toprak
     npm run audit:all          # bütün batarya
 
 Kaos tabanı: `HX_PLACEBO=1` (harness; kural aynı, tur zarından bir sayı
@@ -179,6 +188,11 @@ kayıt v28). Denetimler: `npm run audit:peoples` (dünya üretimi + kampanya
 halk kanalları), `npm run audit:war` (irade/yorgunluk/yasa/levée),
 `audit:homeland` (ana yurt kilidi, çeşitlilik, bırakma hep açık).
 Şartname ve temel ölçümler: `scripts/audit/_tmp/redesign/` (gitignore).
+Etnik mozaik (2026-11-23, TASARIM §10): kültür tohumu alanla çoğalır, yama
+kuşağı/diaspora/ada azınlığı `world/mosaic.js` (ulustan önce), kardeş halklar ve
+imparatorluk cepleri (ulustan sonra). Sürüm `genOptions.cultureGen` (eski kayıt 1
+ile kurulur, kayıt sürümü artmaz); ölçü `npm run audit:diversity` (boy başına
+halk, halk başına ulus, azınlık, yama; `--sizes 160,240,earth,240n200`).
 
 Kampanya boyu grafik pano (oyuncu + dünya, 160×96, ~15 dk/koşu, paralel koş):
 `node scripts/audit/stats-dashboard.mjs SEED auto|noinvest|diplo`
@@ -257,7 +271,7 @@ hariç). Kayıt sürümü 28'dir (halklar doğuşta; eski kayıtlar temiz
 reddedilir, menü onları "devam et" diye sunmaz). Kayıtlar yuvalıdır:
 metin IndexedDB'de, küçük dizin localStorage'da (`src/game/saveStore.js`;
 kayıt 1917'de 3,7M karakter, Chrome'un localStorage tavanı ~5M). `game.save/load`
-zaman uyumsuzdur ve `{ok, reason}` döner; ekran `screens.render_saves`. Donanma deniz bölgeleriyle yönetilir: `src/world/seaZones.js`
+zaman uyumsuzdur ve `{ok, reason}` döner; ekran `screens.render_saves`. Donanma deniz bölgeleriyle yönetilir (oyuncu FİLO ile: `navy.js` FİLOLAR, emir `orders.js setFleetOrder`, haritada sayaç `seaLayer.fleetAt` + `game.selectFleet`/sağ tık; filosuz ulus = YZ, dağıtım eskisi): `src/world/seaZones.js`
 (bölümleme), `src/game/navy.js` (dağıtım, hâkimiyet, muharebe, abluka,
 gemi sınıfı), `src/game/seaLanes.js` (ticaret yolları, denizaltı akını),
 `src/render/seaLayer.js` (Seas kipi, M), `src/ui/navyDock.js` (panel).
