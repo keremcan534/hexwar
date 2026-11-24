@@ -322,12 +322,34 @@ export function drawSituation(canvas, model, selected, redraw) {
   }
 
   // 4. Etiketler: bayrak + ad; bizimki büyük. Kâğıt renginde hale, okunur kalsın.
-  for (const [id, at] of labels) {
+  // Çakışma: önce biz, sonra seçili, sonra büyükten küçüğe; yer kalmayan etiket bir
+  // satır aşağı kayar, orada da yoksa yalnız bayrağı kalır (küçük levhada adlar üst
+  // üste binip okunmaz oluyordu).
+  const placed = [];
+  const hits = (r) => placed.some((q) => r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h);
+  const order = [...labels.entries()].sort((a, b) => (b[0] === me.id) - (a[0] === me.id)
+    || (b[0] === selected) - (a[0] === selected) || b[1].n - a[1].n);
+  for (const [id, at] of order) {
     const nation = nations[id];
     if (!nation) continue;
-    const [x, y] = P(at.x, at.y);
+    const [x, y0] = P(at.x, at.y);
+    let y = y0;
     const big = id === me.id;
     const fw = big ? 30 : 24; const fh = big ? 20 : 16;
+    ctx.save();
+    ctx.font = `600 ${big ? 17 : 13}px ${FONT_DISPLAY}`;
+    ctx.letterSpacing = big ? '2px' : '1.2px';
+    const tw = ctx.measureText((nation.name ?? '').toUpperCase()).width;
+    ctx.restore();
+    const boxAt = (yy) => ({ x: x - Math.max(tw, fw) / 2 - 2, y: yy - fh - 9, w: Math.max(tw, fw) + 4, h: fh + 9 + (big ? 22 : 18) });
+    let showName = true;
+    if (hits(boxAt(y))) {
+      if (!hits(boxAt(y + 16))) y += 16;
+      else showName = false;
+    }
+    const flagBox = { x: x - fw / 2 - 1, y: y - fh - 9, w: fw + 2, h: fh + 2 };
+    if (!showName && hits(flagBox)) continue;
+    placed.push(showName ? boxAt(y) : flagBox);
     if (nation.flag) {
       ctx.save();
       ctx.shadowColor = 'rgba(30, 20, 8, 0.45)'; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
@@ -335,8 +357,9 @@ export function drawSituation(canvas, model, selected, redraw) {
       ctx.restore();
       drawFlag(ctx, nation.flag, x - fw / 2, y - fh - 8, fw, fh, { frame: false });
     }
+    if (!showName) continue;
     ctx.save();
-    ctx.font = `${big ? 600 : 600} ${big ? 17 : 13}px ${FONT_DISPLAY}`;
+    ctx.font = `600 ${big ? 17 : 13}px ${FONT_DISPLAY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const text = (nation.name ?? '').toUpperCase();

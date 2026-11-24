@@ -333,8 +333,9 @@ export function renderDiplomacyScreen(screens, me) {
     : '';
 
   // MASA (2026-11-25, Codex konsepti; Kerem: "diplomacy ekranı çok boş"): solda ulus
-  // defteri; sağda diplomatik durum levhası ve altında üç kısa kart; altta seçili
-  // ulusun şeridi. Kartlar birkaç satır gösterir, fazlası levhanın yerinde tam
+  // defteri; sağda diplomatik durum levhası ve altında üç kısa kart; altta seçili ulusun
+  // şeridi. Bekleyen istek ya da barış teklifi varsa sağ sütunun başına geçer ve kartlar
+  // çekilir (kartlar üst satırdaki göstergelerin özetidir; cevap bekleyen iş öndedir). Kartlar birkaç satır gösterir, fazlası levhanın yerinde tam
   // liste olarak açılır (iç içe küçük kaydırma kutusu yok).
   const expand = focus ? null : screens.dipExpand ?? null;
   const back = '<button type="button" class="k-btn sm" data-dip-expand="">Map</button>';
@@ -388,7 +389,7 @@ export function renderDiplomacyScreen(screens, me) {
         ${requests}
         ${offers ? kitPanel('Peace offers', offers, { sub: 'answer within six weeks' }) : ''}
         ${centre}
-        ${cards}
+        ${requests || offers ? '' : cards}
       </div>
       ${target?.alive ? deskStrip(screens, me, target, view.rows.find((r) => r.id === selectedId)) : ''}
     </div>`;

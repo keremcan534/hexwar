@@ -8,7 +8,7 @@
 //
 // Her koşu kendi profil dizinini ve kendi debug portunu kullanır: paralel
 // koşular aynı portu paylaşırsa adımlar tek tarayıcıda karışır.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -190,7 +190,10 @@ try {
   error = String(e?.stack ?? e);
 } finally {
   try { ws?.close(); } catch {}
-  chrome.kill();
+  // Windows'ta kill() yalnız ana süreci kapatır; GPU ve çizici alt süreçleri yetim kalıp
+  // birikiyor, sonraki koşuların açılışı 60 sn'de zaman aşımına düşüyordu (2026-11-25).
+  if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(chrome.pid), '/T', '/F'], { stdio: 'ignore' });
+  else chrome.kill();
   await sleep(300);
   try { rmSync(profile, { recursive: true, force: true }); } catch {}
 }

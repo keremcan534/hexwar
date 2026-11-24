@@ -130,9 +130,12 @@
 .dip-desk .dip-row.sel { background: linear-gradient(90deg, rgba(232, 196, 110, 0.16), rgba(232, 196, 110, 0.04) 70%); box-shadow: inset 3px 0 0 #e8c46e; }
 .dip-desk .dip-row.sel .dip-name b { color: var(--gold-bright); }
 
-.dip-right { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
+/* Sağ yığın pencerenin kuralıyla kendi içinde kayar (istekler uzarsa); levha en az 200 px. */
+.dip-right { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--gold) var(--surface-sunken); }
 .dip-right > .k-panel { flex: none; }
 .dip-right > :is(.dip-sit, .dip-full, .dip-cpanel) { flex: 1 1 auto; min-height: 0; }
+/* Levha kartların altına taşmasın: tuval küçülür, panel kendi kutusunda kalır. */
+.dip-right > .dip-sit { overflow: hidden; min-height: 230px; }
 .dip-right > :is(.dip-full, .dip-cpanel) > .k-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--gold) var(--surface-sunken); }
 
 .dip-sit > .k-body { flex: 1 1 auto; min-height: 0; gap: 6px; padding: 8px 10px 8px; }
