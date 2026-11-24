@@ -483,6 +483,8 @@ Dosya: `arayuz/saat-blogu.webp`; dilim `assets/ui/clock/`.
 
 ## 24-25. Çerçeve armaları ve süsleri, ultra gerçekçi: 2 sayfa × 6 parça (tamamlandı, oyunda)
 
+Oyundaki set CİLALI bronzdur (`arayuz/arma-1-cilali.webp`, `arma-2-cilali.webp`; Kerem 2026-11-23:
+"polishlenmiş armalar eskisinden daha iyi"); ilk parlak set `assets/ui/crest/v1/` altında saklı.
 Bağlandı (hud.css "ÇERÇEVE ARMALARI"): minimap ve olay kartı kartal, savaş kutusu kılıç, donanma
 paneli çapa, olay kartı başlığı ayraç, yönetim penceresi dört köşe süsü (corner + aynadaki üç
 kopya). Henüz kullanılmayan: wheat, shield, gear, finial, keystone, pendant, wings.

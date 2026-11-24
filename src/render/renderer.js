@@ -212,6 +212,8 @@ const VOID_FILL = '#0a2836';
  * oluyordu; 0.45'te yakın dal telefonda ~1000 hex çizer, hala bütçede.
  */
 export const CACHE_ZOOM = 0.45;
+/** Kare başına sayaç pişirme payı (ms); aşılınca kalan sayaçlar sonraki karelere kalır (unitSprite). */
+const SPRITE_BAKE_BUDGET_MS = 3;
 /**
  * Hex ızgarasının görünmeye başladığı zoom. CACHE_ZOOM 0.55'ten 0.45'e
  * inince yakın dal 0.45-0.55 bandını da çizer oldu; ızgara o bantta hem
@@ -2215,6 +2217,7 @@ export class Renderer {
   }
 
   render(world, state = {}) {
+    this.spriteBakeMs = 0;
     // Stil kareyi sarmalayabilir (eğik kamera: mürekkep ekran dışına, yüzey
     // mesh'e; bkz. gfx/threeD.js). Klasikte ve sarmalamayan stilde dal yok.
     const wrap = this.gfx.style?.renderWrap;
@@ -2577,7 +2580,7 @@ export class Renderer {
         this.sea.drawFleets(ctx, world, rect, state.playerNation, this.mapMode === 'seas');
         if (this.mapMode === 'seas') this.sea.drawSeaInfo(ctx, world, rect, state.playerNation);
         this.drawBattles(ctx, world, rect);
-        this.drawPockets(ctx, world, state.playerNation);
+        this.drawPockets(ctx, world, state.playerNation, rect);
         this.drawFloaters(ctx, state.floaters);
         this.drawAssaultOdds(ctx, state.hoverOdds);
       }
@@ -2643,7 +2646,7 @@ export class Renderer {
       this.sea.drawFleets(ctx, world, rect, state.playerNation, this.mapMode === 'seas');
       if (this.mapMode === 'seas') this.sea.drawSeaInfo(ctx, world, rect, state.playerNation);
       this.drawBattles(ctx, world, rect);
-      this.drawPockets(ctx, world, state.playerNation);
+      this.drawPockets(ctx, world, state.playerNation, rect);
       this.drawFloaters(ctx, state.floaters);
       this.drawAssaultOdds(ctx, state.hoverOdds);
     }
@@ -4027,14 +4030,19 @@ export class Renderer {
    * CEPLER (game/pockets.js): kaçış yolu kalmayan tümenlerin karesinde kesik
    * halka. Bizimki kırmızı ve "ENCIRCLED", düşmanınki altın ve "POCKET".
    */
-  drawPockets(ctx, world, playerNation) {
+  drawPockets(ctx, world, playerNation, rect = null) {
     const pockets = world.pockets;
     if (!pockets?.length) return;
     const zoom = this.camera.zoom;
+    // Ekran dışı cep çizilmez: savaşta yüzlerce cep olur, her biri kesik yay + ölçülen
+    // yazı demekti (ölçüldü: 8x akışta 13 sn'de 270 ms). Pay halka ile etiketi kapsar.
+    const pad = Math.max(HEX_SIZE * 0.95, 16 / zoom) + 90 / zoom;
     ctx.save();
     for (const pocket of pockets) {
       const tile = world.get(pocket.q, pocket.r);
       if (!tile) continue;
+      if (rect && (tile.x < rect.minX - pad || tile.x > rect.maxX + pad
+        || tile.y < rect.minY - pad || tile.y > rect.maxY + pad)) continue;
       if (this.upright && !this.upright.pin(ctx, tile.x, tile.y)) continue;
       const ours = pocket.nationId === playerNation;
       const color = ours ? '#ff5a3c' : '#f0c75e';
@@ -5013,10 +5021,41 @@ export class Renderer {
       ctx.strokeStyle = ring;
       ctx.stroke();
     }
-    const q = ctx.imageSmoothingQuality;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(image, x - w / 2, y - h / 2, w, h);
-    ctx.imageSmoothingQuality = q;
+    ctx.drawImage(this.markAt(image, w * zoom, h * zoom), x - w / 2, y - h / 2, w, h);
+  }
+
+  /**
+   * İşaret resminin ekran boyunda (cihaz pikseli, yarım piksel basamağı) önceden
+   * küçültülmüş kopyası. Eskiden her işaret her karede büyük kaynaktan 'high' kaliteyle
+   * küçülüyordu: şehir + state + liman işaretleri kare başına onlarca pahalı örnekleme
+   * (ölçüldü: drawMark, zoom sırasında render süresinin ~%10'u). Küçültme yine 'high'
+   * ile, kovada bir kez; karede yalnız ~1:1 blit kalır.
+   */
+  markAt(image, cssW, cssH) {
+    const dpr = this.dpr || 1;
+    const cw = Math.max(1, Math.round(cssW * dpr * 2) / 2);
+    const ch = Math.max(1, Math.round(cssH * dpr * 2) / 2);
+    // Kaynak hedeften küçükse küçültme yok: doğrudan basılır.
+    if (!(image.width > cw * 1.5)) return image;
+    this.markScaled ??= new WeakMap();
+    let sizes = this.markScaled.get(image);
+    if (!sizes) {
+      sizes = new Map();
+      this.markScaled.set(image, sizes);
+    }
+    const key = cw * 4096 + ch;
+    let canvas = sizes.get(key);
+    if (!canvas) {
+      if (sizes.size > 64) sizes.clear();
+      canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(cw);
+      canvas.height = Math.ceil(ch);
+      const g = canvas.getContext('2d');
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(image, 0, 0, canvas.width, canvas.height);
+      sizes.set(key, canvas);
+    }
+    return canvas;
   }
 
   drawVictoryPoints(ctx, world, rect) {
@@ -5314,6 +5353,11 @@ export class Renderer {
     this.drawHeadings(ctx, heads, zoom);
     // Kayma sürüyorsa bir kare daha; bitince istek kesilir (sürekli döngü yok).
     if (this.glideLive) this.requestFrame?.();
+    // Pişmemiş sayaç kaldıysa bir kare daha (borç bitince istek kesilir).
+    if (this.spriteDebt) {
+      this.spriteDebt = false;
+      this.requestFrame?.();
+    }
   }
 
   pushUnitHit(hits, T, sd, unit, stack, x, y, w, h) {
@@ -5677,8 +5721,23 @@ export class Renderer {
       + `${unit.battleId ? 1 : 0}|${selected ? 1 : 0}|${stackLen}|${unit.order?.type ?? ''}|`
       + `${unitPlates.size}|${allegiance}|${unitSkinStamp()}`;
     this.unitSprites ??= new Map();
+    const shown = (this.shownSprites ??= new WeakMap());
     let sprite = this.unitSprites.get(key);
-    if (sprite) return sprite;
+    if (sprite) {
+      shown.set(unit, sprite);
+      return sprite;
+    }
+    // PİŞİRME BÜTÇESİ. Zoom kovası değişince ya da hafta kapanınca (mevcut, düzen) ekrandaki
+    // bütün sayaçların anahtarı birden değişir ve hepsi aynı karede pişiyordu (ölçüldü: 8x
+    // akışta hafta başına ~20 ms'lik sıçrama). Bütçe dolunca birim bir kare daha önceki
+    // sprite'ıyla basılır: ölçü dünya biriminde, eski kova yalnız çözünürlük farkıdır.
+    // Kalanlar sonraki karelerde pişer, kare zinciri borç bitince kendiliğinden durur.
+    const last = shown.get(unit);
+    if (last && this.spriteBakeMs >= SPRITE_BAKE_BUDGET_MS) {
+      this.spriteDebt = true;
+      return last;
+    }
+    const bakeStart = performance.now();
     sprite = this.paintCounterSprite(Math.pow(1.25, bucket), {
       nation,
       allegiance,
@@ -5700,6 +5759,8 @@ export class Renderer {
       }
     }
     this.unitSprites.set(key, sprite);
+    shown.set(unit, sprite);
+    this.spriteBakeMs = (this.spriteBakeMs ?? 0) + performance.now() - bakeStart;
     return sprite;
   }
 

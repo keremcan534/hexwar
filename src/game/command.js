@@ -1294,7 +1294,7 @@ export function participatingAttackPower(units) {
  * bulunabilen mesru yollar kayboldu, ordu bilesimi ve fabrika sayisi 530
  * haftada farklilasti. Kazanci olmayan bir davranis degisikligi tutulmaz.
  */
-function march(game, divisions) {
+function* march(game, divisions) {
   for (const unit of divisions) {
     if (unit.battleId || (unit.retreatUntil ?? 0) > game.turns.turn) continue;
     // HOLD emri komutani da baglar: "yerinde dur" diyen oyuncunun tumenini
@@ -1316,6 +1316,10 @@ function march(game, divisions) {
       if (!post || unit.tile === post) continue;
     }
     orderMove(game, unit, post);
+    // Yol araması başına bir dilim: ulaşılamaz mevkiye giden tek arama bütün
+    // grafı açıp ~5 ms tutar ve on iki tümenlik grup 8x'te 60-200 ms'lik tek
+    // adım üretiyordu (ölçüldü). Sıra ve sonuç aynı; araya yalnız kare girer.
+    yield;
   }
 }
 
@@ -1666,8 +1670,8 @@ function advance(game, general, divisions) {
   }
 }
 
-/** Bir ordu grubunun haftalik isleyisi. */
-function runGroup(game, nation, general, context) {
+/** Bir ordu grubunun haftalik isleyisi; yürüyüşte tümen başına dilim (bkz. march). */
+function* runGroup(game, nation, general, context) {
   const world = game.world;
   // Amiralin cephesi yok: filo sinir tutmaz. Hattini turetmek, haritada
   // amirale ait olmayan bir kara cephesi cizdiriyordu.
@@ -1729,8 +1733,17 @@ function runGroup(game, nation, general, context) {
   const t0 = performance.now();
   assignPosts(world, managed, fallback?.length ? fallback : front);
   const t1 = performance.now();
-  march(game, managed);
-  const t2 = performance.now();
+  // Dilimli işte duvar süresi kareler arasını da sayardı: profil yalnız
+  // gerçek işi toplasın diye dilim süreleri ayrı biriktirilir.
+  let marchMs = 0;
+  let sliceAt = performance.now();
+  for (const _ of march(game, managed)) {
+    marchMs += performance.now() - sliceAt;
+    yield;
+    sliceAt = performance.now();
+  }
+  marchMs += performance.now() - sliceAt;
+  const t2 = t1 + marchMs;
 
   // Plan, tumenler mevkilerine oturdukca olgunlasir. Hazirlik "beklemek" degil
   // "yerlesmek"tir; boylece gosterge oyuncuya hattin oturdugunu da soyler.
@@ -1742,8 +1755,9 @@ function runGroup(game, nation, general, context) {
   general.planning = Math.max(0, Math.min(1, (general.planning ?? 0)
     + PLANNING_RATE * (settled / Math.max(1, managed.length)) * (1 + staff)));
 
+  const t2b = performance.now();
   if (general.stance === STANCE.ADVANCE && !fallback?.length) advance(game, general, divisions);
-  const t3 = performance.now();
+  const t3 = t2 + (performance.now() - t2b);
   if (!world.commandWorst || t3 - t0 > world.commandWorst.total) {
     world.commandWorst = {
       nation: nation.name, divisions: divisions.length, front: front.length,
@@ -1908,7 +1922,7 @@ export function* runNationCommandSteps(game, nation, context) {
   // Sektörler ulus başına bir kez: generaller aynı sınırı bölüşür.
   context.sectors = nationSectors(game.world, nation, context.borders, context.unitById);
   for (const general of generalsOf(nation)) {
-    runGroup(game, nation, general, context);
+    yield* runGroup(game, nation, general, context);
     yield;
   }
 }

@@ -840,18 +840,36 @@ function draw(flag, time) {
  * @param {'wave'|'banner'|'crest'} style
  * @param {{war?: boolean}} [opts] war: savaş sancağı (flagPainter drawSabres)
  */
-export function mountFlag(host, nation, cssW, cssH, style = 'wave', { war = false } = {}) {
+export function mountFlag(host, nation, cssW, cssH, style = 'wave', { war = false, cssZoom = null } = {}) {
   if (!host || !nation?.flag) return null;
 
   // Kap arayüz ölçeğiyle yakınlaştırılmışsa (ui/uiScale.js, 1440p'de 1.33)
   // bez o ölçekte görünür: tuval yoğunluğu da onunla çarpılır, yoksa bayrak
   // büyütülmüş bulanık bir resim olurdu. Tuvalin CSS ölçüsü yine yerel px.
-  const dpr = Math.min(2, window.devicePixelRatio || 1) * Math.min(2, host.currentCSSZoom || 1);
+  // currentCSSZoom hesaplanmış stil ister: yazmalar arasında okunursa her bayrak bir stil
+  // hesabı zorlar (hydrateFlags okumaları önce toplu yapar, değeri buradan geçirir).
+  const dpr = Math.min(2, window.devicePixelRatio || 1) * Math.min(2, (cssZoom ?? host.currentCSSZoom) || 1);
   const w = Math.round(cssW * dpr);
   const h = Math.round(cssH * dpr);
 
   let flag = host.__flag;
   if (flag && flag.nation === nation && flag.w === w && flag.h === h && flag.style === style && flag.war === war) return flag;
+
+  // Sabit bayrak (arma, minik) kopmuş eski tuvalinden geri alınır. innerHTML ile her
+  // tazelemede baştan kurulan paneller (savaş rıhtımı: hafta başına onlarca arma) her
+  // seferinde yeni tuval açıp drawFlag'i yeniden koşuyordu; 8x akışta kare başına
+  // 30-70 ms'lik sıçrama buydu (ölçüldü: 13 sn'de mountFlag 696 ms).
+  const fixedHere = cssW < 30 || style === 'crest';
+  const spareKey = fixedHere && !flag ? `${nation.id}|${cssW}x${cssH}|${w}x${h}|${style}|${war ? 1 : 0}` : null;
+  if (spareKey) {
+    const reuse = spareFlags.get(spareKey)?.find((old) => !old.canvas.isConnected
+      && old.nation === nation && old.spec === nation.flag);
+    if (reuse) {
+      host.replaceChildren(reuse.canvas);
+      host.__flag = reuse;
+      return reuse;
+    }
+  }
 
   let canvas = flag?.canvas;
   if (!canvas) {
@@ -923,10 +941,12 @@ export function mountFlag(host, nation, cssW, cssH, style = 'wave', { war = fals
     phase: clothPhase(nation),
     tex: null,
     texGen: -1,
+    spec: nation.flag,
   };
   host.__flag = flag;
   canvas.__flag = flag;
   bake(flag);
+  if (spareKey) keepSpare(spareKey, flag);
 
   for (const old of parked) if (!old.canvas.isConnected) parked.delete(old);
   if (still) {
@@ -940,6 +960,27 @@ export function mountFlag(host, nation, cssW, cssH, style = 'wave', { war = fals
   return flag;
 }
 
+/** Sabit bayrak yedekleri: anahtar (ulus, ölçü, biçim, savaş) → takılmış ya da kopmuş bayraklar. */
+const spareFlags = new Map();
+// Aynı arma bir panelde onlarca kez durabilir (oyuncunun arması her savaş satırında).
+const SPARE_PER_KEY = 64;
+const SPARE_KEYS = 800;
+
+function keepSpare(key, flag) {
+  let list = spareFlags.get(key);
+  if (!list) {
+    // Tavan: dünya boyunca ulus × ölçü sayısı sınırlı, ama uzun oturumda birikmesin.
+    if (spareFlags.size >= SPARE_KEYS) spareFlags.clear();
+    list = [];
+    spareFlags.set(key, list);
+  }
+  list.push(flag);
+  if (list.length > SPARE_PER_KEY) {
+    const drop = list.findIndex((old) => !old.canvas.isConnected);
+    list.splice(drop >= 0 ? drop : 0, 1);
+  }
+}
+
 /**
  * HTML dizesiyle kurulan ekranlar için: `data-flag-nation` taşıyan kapları
  * bulup bayrağı takar. Ekran gövdesi her tazelemede baştan kurulduğu için
@@ -947,10 +988,16 @@ export function mountFlag(host, nation, cssW, cssH, style = 'wave', { war = fals
  */
 export function hydrateFlags(root, nations) {
   if (!root) return;
-  for (const host of root.querySelectorAll('[data-flag-nation]')) {
+  // Önce bütün okumalar, sonra bütün yazmalar: takılan her tuval DOM'u kirletir ve
+  // araya giren okuma stili baştan hesaplatırdı (ölçüldü: savaş rıhtımında hafta başına
+  // onlarca zorunlu stil hesabı, 8x akışta 13 sn'de ~340 ms).
+  const hosts = [...root.querySelectorAll('[data-flag-nation]')];
+  const zooms = hosts.map((host) => host.currentCSSZoom || 1);
+  hosts.forEach((host, i) => {
     const nation = nations?.[Number(host.dataset.flagNation)];
-    if (!nation) continue;
+    if (!nation) return;
     mountFlag(host, nation,
-      Number(host.dataset.flagW) || 64, Number(host.dataset.flagH) || 42, host.dataset.flagStyle || 'wave');
-  }
+      Number(host.dataset.flagW) || 64, Number(host.dataset.flagH) || 42, host.dataset.flagStyle || 'wave',
+      { cssZoom: zooms[i] });
+  });
 }

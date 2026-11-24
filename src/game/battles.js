@@ -473,7 +473,19 @@ function retreatDestination(world, army, awayFrom) {
  * yüklemede ilk hafta aynı durumdan yeniden kurulur — gelecek değişmez.
  */
 export function markEncircled(world) {
-  for (const unit of world.units) unit.encircled = isEncircled(world, unit);
+  for (const _ of markEncircledSteps(world)) { /* boşalt */ }
+}
+
+/**
+ * markEncircled'ın dilimli hâli (turn.js): her tümenin kaçış araması ayrı ve
+ * saftır, demetler arasına yalnız kare girer; sıra ve sonuç aynıdır.
+ */
+export function* markEncircledSteps(world, batch = 24) {
+  let n = 0;
+  for (const unit of world.units) {
+    unit.encircled = isEncircled(world, unit);
+    if (++n % batch === 0) yield;
+  }
 }
 
 /**

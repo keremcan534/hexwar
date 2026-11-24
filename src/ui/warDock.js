@@ -146,7 +146,24 @@ export class WarDock {
     const html = this.html(view, me);
     if (!force && html === this.last) return;
     this.last = html;
+    // Bayrak kapları el değiştirir, yeniden kurulmaz: kutu her hafta (sayılar değişince) baştan
+    // yazılıyordu ve her armanın tuvali yeniden pişiyordu (profil: 8x akarken hafta başına ~80 ms,
+    // tek parça takılma). Aynı ulus ve ölçüdeki eski kap yeni kabın yerine taşınır.
+    const keep = new Map();
+    for (const host of this.root.querySelectorAll('[data-flag-nation]')) {
+      const key = `${host.dataset.flagNation}|${host.dataset.flagW}|${host.dataset.flagH}|${host.dataset.flagStyle ?? ''}`;
+      if (!keep.has(key)) keep.set(key, []);
+      keep.get(key).push(host);
+    }
     this.root.innerHTML = html;
+    for (const host of this.root.querySelectorAll('[data-flag-nation]')) {
+      const key = `${host.dataset.flagNation}|${host.dataset.flagW}|${host.dataset.flagH}|${host.dataset.flagStyle ?? ''}`;
+      const old = keep.get(key)?.pop();
+      if (old?.__flag) {
+        old.className = host.className;
+        host.replaceWith(old);
+      }
+    }
     hydrateFlags(this.root, world.nations);
     refreshTooltipsWithin(this.root);
     this.placeDetail();

@@ -1449,7 +1449,7 @@ button.nd-coast:hover { text-decoration: underline; }
   top: 0;
   z-index: 4;
   height: 40px;
-  aspect-ratio: 400 / 143;
+  aspect-ratio: 400 / 125;
   transform: translate(-50%, -56%);
   background: url("../assets/ui/crest/eagle.webp") center / contain no-repeat;
   filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.7));
@@ -1457,13 +1457,13 @@ button.nd-coast:hover { text-decoration: underline; }
 }
 .war-dock::before {
   height: 36px;
-  aspect-ratio: 400 / 155;
+  aspect-ratio: 400 / 128;
   transform: translate(-50%, -50%);
   background-image: url("../assets/ui/crest/sabres.webp");
 }
 .navy-dock::before {
   height: 36px;
-  aspect-ratio: 400 / 162;
+  aspect-ratio: 400 / 153;
   transform: translate(-50%, -50%);
   background-image: url("../assets/ui/crest/anchor.webp");
 }
@@ -1634,7 +1634,7 @@ button.nd-coast:hover { text-decoration: underline; }
   top: 0;
   z-index: 4;
   height: 32px;
-  aspect-ratio: 400 / 173;
+  aspect-ratio: 400 / 159;
   transform: translate(-50%, -80%);
   background: url("../assets/ui/crest/shield.webp") center / contain no-repeat;
   filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.7));
@@ -1902,3 +1902,44 @@ button.nd-coast:hover { text-decoration: underline; }
   #btn-release-front .tool-txt,
   #btn-clear-all:not(.armed) .tool-txt { display: none; }
 }
+
+/* --- SAAT: + / − ADIMI VE TIKLAMA ALANI (Kerem 2026-11-24: "sağ üstteki saat biraz küçük kalıyor
+   tıklama açısından, + − tuşları yok") ------------------------------------------------------
+   Kadranın sağında iki pirinç düğme, klavyedeki + / − ile aynı işi yapar. Yer, yıl yuvasından ve
+   kasanın iç boşluğundan alınır (çubukta gösterge kartuşuna değmesin); kadranın kendisi büyür. */
+.turn-control { gap: 6px; padding: 0 9px 0 12px; }
+.turn-control .turn-badge { width: 60px; }
+.turn-control .turn-status { max-width: 60px; font-size: 10px; }
+.tc-steps {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+}
+.tc-step {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 23px;
+  padding: 0 0 1px;
+  border: 0;
+  border-image: var(--sk-dugme);
+  background: none;
+  color: #f2e6c8;
+  font: 700 17px/1 var(--font-ui);
+  text-shadow: 0 1px 0 #000;
+  cursor: var(--cur-pointer);
+}
+.tc-step:hover { border-image: var(--sk-dugme-ustunde); color: #fff; }
+.tc-step:active { border-image: var(--sk-dugme-basili); }
+/* Oynat/duraklat düğmesi büyür: en sık basılan denetim. */
+.turn-control .tc-dial .time-btn.time-pause,
+.turn-control.is-paused .tc-dial .time-btn.time-pause {
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+}
+/* Kasa dar pencerede daha az küçülür (tıklama alanı); yer gösterge grubundan açılır. */
+@media (max-width: 1899px) { .turn-control { zoom: 0.95; } }
+@media (max-width: 1599px) { .turn-control { zoom: 0.92; } }
+@media (max-width: 1439px) { .turn-control { zoom: 0.88; } }

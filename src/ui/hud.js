@@ -610,6 +610,9 @@ export class Hud {
     }
     // Saat biriminin yuvarlak düğmesi Space'in aynısı: duraklatıkken oynatır.
     $('btn-pause').onclick = () => { if (!this.clockLocked()) game.togglePause(); };
+    for (const btn of document.querySelectorAll('[data-speed-step]')) {
+      btn.onclick = () => { if (!this.clockLocked()) game.stepSpeed(Number(btn.dataset.speedStep)); };
+    }
     this.bindDialSectors();
     const epilogue = $('btn-epilogue');
     if (epilogue) {

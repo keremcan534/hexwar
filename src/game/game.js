@@ -130,6 +130,16 @@ const SPEEDS = [0, 1, 2, 4, 6, 8];
  */
 const DAY_MS = 1000;
 const DAYS_PER_WEEK = 7;
+/**
+ * Kamera oynarken (tekerlek, sürükleme, kayma) hafta dilimi bekler. Dilimin 5 ms bütçesi
+ * adımlar arasında denetlenir; tek adım (bir ulusun yürüyüş emirleri, yol bulma) 8x'te
+ * 50-200 ms sürebiliyor ve zoom tam o karede donuyordu (ölçüldü: akarken zoomda kare
+ * p95 57 ms, p99 130 ms). Bekleme yalnız zamanlamadır: hafta aynı adımlarla, aynı sırayla
+ * kapanır; takvim zaten hafta sınırında işi bekler. Tavan: sürekli kaydırmada hafta
+ * sonsuza dek ertelenmesin.
+ */
+const INPUT_QUIET_MS = 220;
+const TURN_DEFER_MAX_MS = 1500;
 /** Dusman province'i alindiktan sonra yeni taarruzdan once ikmal suresi. */
 const CONSOLIDATION_WEEKS = 2;
 
@@ -208,7 +218,10 @@ export class Game {
       onTap: (x, y, mods) => this.handleTap(x, y, mods),
       onDoubleTap: (x, y) => this.handleDoubleTap(x, y),
       onHover: (x, y) => this.handleHover(x, y),
-      onChange: () => this.requestRender(),
+      onChange: () => {
+        this.lastInputAt = performance.now();
+        this.requestRender();
+      },
       // Ctrl + sağ tık bir cepheye: o planın bütün tümenleri seçilir (HOI4).
       onRightTap: (x, y, mods) => (mods?.ctrl && this.selectFrontAt(x, y)) || this.handleRightTap(x, y),
       // Sağ sürükleme de yürüyüş emridir: bırakılan yer hedeftir. Cephe artık
@@ -260,7 +273,48 @@ export class Game {
   emit(event, payload) {
     const list = this.listeners[event];
     if (!list) throw new Error(`Bilinmeyen olay: ${event}`);
+    // Tam bir 'turn' yayını yarım kalan ertelenmiş yayının yerini alır: bütün
+    // dinleyiciler daha yeni durumla zaten çağrılıyor.
+    if (event === 'turn') this.pendingTurnEvent = null;
     for (const fn of list) fn(payload);
+  }
+
+  /**
+   * Dilimli hafta kapanışının 'turn' olayı. Dinleyiciler (savaş rıhtımı, HUD,
+   * bildirimler, sekmeler) birlikte 8x'te 50-200 ms tutuyor ve kapanışın son
+   * adımına biniyordu (ölçüldü). Artık sonraki karelerde kare bütçesiyle sırayla
+   * çağrılırlar; arayüz bir-iki kare gecikir, simülasyon gecikmez: yeni hafta
+   * başlamadan (TurnManager.beginTurnJob/endTurn) kalanı teslim edilir.
+   * Dinleyiciler yalnız arayüzdür (dünyaya yazmaz), sıraları aynıdır.
+   */
+  deferTurnEvent(turn) {
+    this.flushTurnEvent();
+    this.pendingTurnEvent = { turn, index: 0 };
+    this.requestRender();
+    return true;
+  }
+
+  /** Ertelenmiş 'turn' olayının kalan dinleyicilerini hemen çağırır. */
+  flushTurnEvent() {
+    this.drainTurnEvent(Infinity);
+  }
+
+  /** Bütçe dolana dek sıradaki dinleyiciler; her çağrıda en az biri. Bittiyse true. */
+  drainTurnEvent(budgetMs) {
+    const pending = this.pendingTurnEvent;
+    if (!pending) return true;
+    const list = this.listeners.turn;
+    const start = performance.now();
+    while (pending.index < list.length) {
+      // Sayaç çağrıdan ÖNCE ilerler: dinleyici iç içe boşaltma tetiklerse
+      // (endTurn, kayıt) aynı dinleyici iki kez çağrılmaz.
+      const fn = list[pending.index++];
+      fn(pending.turn);
+      if (performance.now() - start >= budgetMs) break;
+    }
+    if (pending.index < list.length) return false;
+    if (this.pendingTurnEvent === pending) this.pendingTurnEvent = null;
+    return true;
   }
 
   /** Yeni dünya üret. seed verilmezse rastgele. */
@@ -1693,7 +1747,10 @@ export class Game {
     // (kısılmış tempoda) akmaya devam etsin. Görünürken pompayı YALNIZ kare
     // zinciri yapar — setInterval içinde pompalamak kare zamanlamasından
     // bağımsız 7-20 ms'lik stall üretiyordu (ölçüldü).
-    if (this.turns.turnJob && document.visibilityState === 'hidden') this.pumpTurnFrame();
+    if (document.visibilityState === 'hidden') {
+      if (this.turns.turnJob) this.pumpTurnFrame();
+      this.flushTurnEvent();
+    }
     let steps = 0;
     while (this.clock.accumulator >= stepMs && steps < 2) {
       // TAKVİM HAFTAYI BEKLEMEZ, HAFTA SINIRI BEKLER. Eskiden iş sürdükçe
@@ -1724,7 +1781,15 @@ export class Game {
 
   /** Tur işini kare zincirine bağlar: her rAF karesi bir dilim işler. */
   pumpTurnFrame() {
-    if (!this.turns.turnJob) return;
+    if (!this.turns.turnJob) {
+      // Haftanın arayüz olayı kare kare (bkz. deferTurnEvent).
+      if (!this.pendingTurnEvent) return;
+      const t0 = performance.now();
+      const done = this.drainTurnEvent(5);
+      this.perf?.add('turnUi', performance.now() - t0);
+      if (!done) this.requestRender();
+      return;
+    }
     const t0 = performance.now();
     // 5 ms: 144 Hz'te kare bütçesi ~7 ms; 7 ms'lik dilim + çizim kareyi
     // aşırıyordu (ölçüldü: sim dilimi p99 16.5 ms). Tur biraz daha çok
@@ -1956,8 +2021,21 @@ export class Game {
       }
     }
     // Bekleyen hafta dilimi bu karenin bütçesinden payını alır; zincir iş
-    // bitene dek tam kare hızında sürer, kaydırma/zoom akıcı kalır.
-    if (this.turns?.turnJob) this.pumpTurnFrame();
+    // bitene dek tam kare hızında sürer. Kamera oynarken dilim bekler (bkz.
+    // INPUT_QUIET_MS): etkileşim durunca zamanlayıcı zinciri yeniden kurar.
+    if (this.turns?.turnJob || this.pendingTurnEvent) {
+      const now = performance.now();
+      const active = moving || now - (this.lastInputAt ?? -Infinity) < INPUT_QUIET_MS;
+      if (!active) this.turnDeferredAt = 0;
+      else this.turnDeferredAt ||= now;
+      if (!active || now - this.turnDeferredAt > TURN_DEFER_MAX_MS) this.pumpTurnFrame();
+      else if (!this.turnResumeTimer) {
+        this.turnResumeTimer = setTimeout(() => {
+          this.turnResumeTimer = 0;
+          this.requestRender();
+        }, INPUT_QUIET_MS);
+      }
+    }
     this.perf?.endFrame();
     // Kayma sürüyorsa TEK bekleyen kare: pumpTurnFrame ya da dilimli iş bu
     // karede zaten bir kare istemiş olabilir. Koşulsuz ikinci rAF, her karede
@@ -2024,6 +2102,7 @@ export class Game {
     this.input.destroy();
     if (this.frameHandle) cancelAnimationFrame(this.frameHandle);
     if (this.waterTimer) clearTimeout(this.waterTimer);
+    if (this.turnResumeTimer) clearTimeout(this.turnResumeTimer);
     if (this.clockTimer) clearInterval(this.clockTimer);
   }
 }

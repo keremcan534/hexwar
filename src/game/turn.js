@@ -35,7 +35,7 @@ import { runEventCards } from './eventCards.js';
 import { assignGoals } from './hegemony.js';
 import { computeOutput } from './econ/output.js';
 import { mod, refreshModifiers } from './modifiers.js';
-import { initBattles, removeFromBattles, runBattles, markEncircled } from './battles.js';
+import { initBattles, removeFromBattles, runBattles, markEncircledSteps } from './battles.js';
 import {
   beginCommand, finishCommand, initCommand, releaseArmy, runNationCommandSteps, seedGenerals,
 } from './command.js';
@@ -453,15 +453,20 @@ export class TurnManager {
    * (ölçüldü). Mantık ve işlem sırası iki yolda da birebir aynıdır.
    */
   endTurn() {
+    // Önceki haftanın ertelenmiş arayüz olayı yeni haftadan önce teslim edilir.
+    this.game.flushTurnEvent?.();
     const steps = this.turnJob ?? this.turnSteps();
     this.turnJob = null;
+    this.slicing = false;
     let step = steps.next();
     while (!step.done) step = steps.next();
   }
 
   /** Haftayı dilimli işlemeye başlar; pumpTurn kare başına ilerletir. */
   beginTurnJob() {
-    if (!this.turnJob && !this.victory) this.turnJob = this.turnSteps();
+    if (this.turnJob || this.victory) return;
+    this.game.flushTurnEvent?.();
+    this.turnJob = this.turnSteps();
   }
 
   /**
@@ -475,17 +480,27 @@ export class TurnManager {
     // Adım süresi izlenir: bütçe aşımı hep TEK bir pahalı adımdan gelir;
     // hangi fazın böldüğü lastWorstStep'te okunur (F3 kaplaması/konsol).
     let stepStart = start;
-    let step = this.turnJob.next();
-    let worst = performance.now() - stepStart;
-    let worstPhase = this.phase;
-    while (!step.done && performance.now() - start < budgetMs) {
-      stepStart = performance.now();
+    // Dilimli kapanışta haftanın 'turn' olayı (arayüz tazelemesi) sonraki
+    // karelere ertelenir (bkz. Game.deferTurnEvent); simülasyon aynıdır.
+    this.slicing = true;
+    let step;
+    let worst;
+    let worstPhase;
+    try {
       step = this.turnJob.next();
-      const ms = performance.now() - stepStart;
-      if (ms > worst) {
-        worst = ms;
-        worstPhase = this.phase;
+      worst = performance.now() - stepStart;
+      worstPhase = this.phase;
+      while (!step.done && performance.now() - start < budgetMs) {
+        stepStart = performance.now();
+        step = this.turnJob.next();
+        const ms = performance.now() - stepStart;
+        if (ms > worst) {
+          worst = ms;
+          worstPhase = this.phase;
+        }
       }
+    } finally {
+      this.slicing = false;
     }
     if (!this.lastWorstStep || worst > this.lastWorstStep.ms) {
       this.lastWorstStep = { ms: worst, phase: worstPhase };
@@ -546,14 +561,13 @@ export class TurnManager {
     const delegate = world.nations[this.playerNation];
     if (delegate?.alive) runDelegatedAI(this.game, delegate, this.rng);
 
-    let aiBatch = 0;
     for (const nation of world.nations) {
       if (nation.id === this.playerNation || !nation.alive) continue;
       this.phase = `ai:${nation.name}`;
       runNationAI(this.game, nation, this.rng);
-      // YZ ulus başına bağımsız karar verir; 4'erli demetler 5 ms'lik kare
-      // bütçesine sığar. Sıra dizisi değişmez, determinizm korunur.
-      if (++aiBatch % 4 === 0) yield* pause('ai');
+      // ULUS BAŞINA dilim: 4'erli demet savaş haftasında 20-40 ms'lik tek adım
+      // üretiyordu (ölçüldü). Sıra dizisi değişmez, determinizm korunur.
+      yield* pause('ai');
     }
     // Diplomasi YZ'si savas ilanlarindan SONRA: cagri-ile-savas kuyrugu
     // bosaltilir (muttefikler saldirgana kendi savaslarini acar), ittifak
@@ -594,7 +608,7 @@ export class TurnManager {
       advanceEntrenchment(unit, this.turn);
     }
     this.supplyAttrition();
-    mark('units');
+    yield* pause('units');
     this.phase = 'reinforcements';
     runReinforcements(this.game);
     yield* pause('reinforcements');
@@ -691,13 +705,17 @@ export class TurnManager {
     runEventCards(this.game);
     yield* pause('politics');
     // Haritadaki ordular çarpıştıkları province üzerinde haftalık muharebe çözer.
+    // Kuşatma taraması her tümen için kaçış yolu arar: savaş haftasında tek
+    // başına 10-30 ms; tümen demetleriyle dilimlenir (saf okuma, sıra aynı).
     this.phase = 'battles';
-    markEncircled(this.world);
+    for (const _ of markEncircledSteps(this.world)) yield* pause('battles');
     runBattles(this.game);
+    yield* pause('battles');
     // Cepler ve teslimler: yalnız okur ve duyurur (pockets.js).
     updatePockets(this.game);
+    yield* pause('battles');
     this.checkElimination();
-    mark('battles');
+    yield* pause('battles');
     // Oyuncunun sürekli emirleri yeni turun hakkıyla işlensin: tur açıldığında
     // otomatik ve yol emirli birimler hamlelerini yapmış olur.
     this.phase = 'orders+tail';
@@ -707,7 +725,7 @@ export class TurnManager {
     // konuldugunda olculdu: masada imzalanan barislarin birlikleri bir hafta
     // gecikiyordu (yabanci toprakta ortalama 1.35 tumen kaliyordu).
     this.withdrawTrespassers();
-    mark('orders');
+    yield* pause('orders');
     this.lastProfile = profile;
     // Ulusal donum noktalari HAFTANIN SONUNDA taranir: borc kapanmis, savas
     // cozulmus, sinirlar oturmus olur. Yalnizca oyuncunun ulkesi — YZ'nin ic
@@ -717,11 +735,12 @@ export class TurnManager {
     // Dunya haberleri: buyuk guc giris/cikisi, sanayi liderligi, cokus.
     // Gecis tetikler; ic frekansi 13 hafta (bkz. events.runWorldStories).
     runWorldStories(this.game);
-    mark('stories');
+    yield* pause('stories');
     // Sınırlar haftanın son hâlinde: barışlar imzalandı, elenenler devredildi.
     this.phase = 'replay';
     this.recordReplay();
-    mark('replay');
+    yield* pause('replay');
+    this.phase = 'victory';
     // Bundan sonrası atomik kuyruk (zafer, autosave). İş kaydı burada
     // bırakılır ki kuyruktaki autosave → endTurn zinciri hâlâ çalışan
     // üretece yeniden girmeye kalkmasın (TypeError: already running).
@@ -737,7 +756,10 @@ export class TurnManager {
       }
     }
 
-    this.game.emit('turn', this.turn);
+    // Arayüz tazelemesi (bütün 'turn' dinleyicileri) 8x'te tek başına 50-200 ms
+    // tutuyordu (ölçüldü). Dilimli kapanışta dinleyiciler sonraki karelere
+    // yayılır; senkron endTurn (betikler, denetimler) eskisi gibi hemen yayar.
+    if (!(this.slicing && this.game.deferTurnEvent?.(this.turn))) this.game.emit('turn', this.turn);
     this.game.requestRender();
     if (this.turn % 10 === 0) this.game.autosave();
   }
