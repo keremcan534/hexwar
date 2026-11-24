@@ -542,7 +542,7 @@ function queueColumn(rows, summary, logistics = [], ironclad = false) {
   const soonest = rows.filter((row) => !row.stalled)
     .reduce((best, row) => (best == null || row.left < best ? row.left : best), null);
   const list = rows.map(queueRow).join('')
-    || '<p class="mil-empty">Nothing is in training. Orders placed in the centre column appear here.</p>';
+    || '<p class="mil-empty" data-vig="drill">Nothing is in training. Orders placed in the centre column appear here.</p>';
   return `<section class="mil-col mil-queue">
     ${band('Units in training', `${rows.length} of ${summary.queueLimit}`)}
     <div class="mil-queue-head">

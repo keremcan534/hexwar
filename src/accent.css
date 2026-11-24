@@ -16,6 +16,7 @@
   --sk-img-yuva: url('../assets/ui/skin/steel/yuva.webp');
   --sk-cerceve-kenar: url('../assets/ui/skin/steel/cerceve.webp') 52 / 13px / 0 stretch;
   --sk-doku: url('../assets/ui/skin/steel/panel-doku.webp');
+  --sk-img-bilgi: url('../assets/ui/skin/steel/bilgi-cerceve.webp');
 }
 :root[data-ui-theme="light"][data-ui-accent="steel"] {
   --sk-dugme: url('../assets/ui/skin/steel-acik/dugme.webp') 16 fill / 5px / 0 stretch;
@@ -46,6 +47,7 @@
   --sk-img-yuva: url('../assets/ui/skin/silver/yuva.webp');
   --sk-cerceve-kenar: url('../assets/ui/skin/silver/cerceve.webp') 52 / 13px / 0 stretch;
   --sk-doku: url('../assets/ui/skin/silver/panel-doku.webp');
+  --sk-img-bilgi: url('../assets/ui/skin/silver/bilgi-cerceve.webp');
 }
 :root[data-ui-theme="light"][data-ui-accent="silver"] {
   --sk-dugme: url('../assets/ui/skin/silver-acik/dugme.webp') 16 fill / 5px / 0 stretch;
@@ -76,6 +78,7 @@
   --sk-img-yuva: url('../assets/ui/skin/verdigris/yuva.webp');
   --sk-cerceve-kenar: url('../assets/ui/skin/verdigris/cerceve.webp') 52 / 13px / 0 stretch;
   --sk-doku: url('../assets/ui/skin/verdigris/panel-doku.webp');
+  --sk-img-bilgi: url('../assets/ui/skin/verdigris/bilgi-cerceve.webp');
 }
 :root[data-ui-theme="light"][data-ui-accent="verdigris"] {
   --sk-dugme: url('../assets/ui/skin/verdigris-acik/dugme.webp') 16 fill / 5px / 0 stretch;

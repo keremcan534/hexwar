@@ -29,7 +29,9 @@ import { drawFlag } from './flagPainter.js';
  * kalibre edilirler.
  */
 const TUNE = {
-  frameMs: 33,        // ~30 Hz; efekt 60 Hz istemiyor
+  // ~60 Hz, ekran tazelemesinin tam böleninde (bkz. schedule). 30 Hz zamanlayıcı bir
+  // sonraki vsync'i beklediğinden 60 Hz ekranda 33/50 ms sekiyordu: kumaş takılıyordu.
+  frameMs: 1000 / 60,
   speed: 1.05,        // ana dalganın hızı
   freq: 2.2,          // ana dalganın uzunluğu (bayrak boyunca)
   speed2: 1.72,       // ikinci, daha hızlı kırışık
@@ -351,6 +353,33 @@ function clothPhase(nation) {
  * Bayrağın kendi piksel boyunda üretilir (ölçeklenen dokuma hare yapar) ve
  * boya göre önbelleklenir: ekranlar her tazelemede bayrağı yeniden pişirir.
  */
+/**
+ * YÜN BAYRAK KUMAŞI (fotoğraf, Codex 2026-11-25; assets/flag/bunting.webp): künye
+ * sancağının dokusu. Üretilen bez ayağı büyük bezde 3 px'lik ekose ızgara gibi
+ * okunuyordu (Kerem: "bayrakta hala hafif dandiklik var"). Gri, ortalaması 128,
+ * dikişsiz; `overlay` ile biner. Yüklenene dek eski dokuma durur, yüklenince
+ * düz sancaklar yeniden pişer.
+ */
+const BUNTING = { src: new URL('../../assets/flag/bunting.webp', import.meta.url).href, scale: 0.45, alpha: 0.5 };
+let buntingImg = null;
+let buntingReady = false;
+function bunting() {
+  if (buntingImg) return buntingReady ? buntingImg : null;
+  buntingImg = new Image();
+  buntingImg.onload = () => {
+    buntingReady = true;
+    for (const set of [live, parked]) {
+      for (const flag of set) {
+        if (!flag.plain) continue;
+        bake(flag);
+        releaseClothSource(flag);
+      }
+    }
+  };
+  buntingImg.src = BUNTING.src;
+  return null;
+}
+
 const WEAVE = {
   thread: 3,       // iplik aralığı (cihaz pikseli)
   contrast: 54,    // iplik kabartısının gri genliği
@@ -428,6 +457,8 @@ const parked = new Set();
 let rafId = 0;
 let timerId = 0;
 let lastFrame = 0;
+let lastRaf = 0;
+let vsyncMs = 1000 / 60;
 
 /** Görünürlük: ekrandan çıkan bayrak çizilmez; geri girince saat yeniden kurulur. */
 const seen = typeof IntersectionObserver === 'function'
@@ -481,6 +512,16 @@ function reducedMotion() {
 
 function loop(now) {
   rafId = 0;
+  // vsync aralığı: art arda iki geri çağrının farkı, en küçüğe hızlı iner (game.js noteVsync).
+  const d = now - lastRaf;
+  lastRaf = now;
+  if (d >= 3 && d <= 50) vsyncMs = d < vsyncMs ? d : vsyncMs + (d - vsyncMs) * 0.01;
+  // Sırası gelmeyen vsync'te çizim yok, yalnız bekleyiş: tempo ekranın tam böleni olur
+  // (60 Hz → her vsync, 144 → ikide bir), aralık sabit kalır.
+  if (now - lastFrame < TUNE.frameMs - vsyncMs * 0.5) {
+    rafId = requestAnimationFrame(loop);
+    return;
+  }
   lastFrame = now;
   const time = now / 1000;
   let drawn = 0;
@@ -493,18 +534,12 @@ function loop(now) {
 }
 
 /**
- * Sonraki kare zamanlayıcıyla beklenir, rAF yalnız çizim anında istenir.
- * Eskiden döngü her vsync'te rAF'ı yeniden kuruyor, 33 ms dolmadıysa boş
- * dönüyordu: üst çubuktaki bayrak hep görünür olduğundan oyun duraklatılmış
- * ve fare kıpırdamıyorken bile sayfa her vsync'te (60-144/sn) kare ve stil
- * hesabı üretiyordu (ölçüldü: 5 sn'de 1161-1203 geri çağrı). Şimdi ~30/sn.
+ * Sonraki kare rAF'ta beklenir. Eskiden setTimeout(33) + rAF idi: zamanlayıcı vsync'e
+ * oturmadığından aralık 33 ile 50 ms arasında sekiyordu (ölçüldü: p95 52 ms). Bekleyen
+ * vsync'ler boş geri çağrıdır; çizim yalnız sırası gelen karede.
  */
 function schedule() {
-  const wait = Math.max(0, TUNE.frameMs - (performance.now() - lastFrame));
-  timerId = setTimeout(() => {
-    timerId = 0;
-    rafId = requestAnimationFrame(loop);
-  }, wait);
+  rafId = requestAnimationFrame(loop);
 }
 
 function startClock() {
@@ -597,7 +632,21 @@ function bakeBanner(flag) {
   ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, flag.src.width, flag.src.height);
   drawFlag(ctx, flag.nation.flag, 0, F, cw, ch, { frame: false, war: flag.war });
-  clothOver(ctx, 0, F, cw, ch, 0.7);
+  const photo = flag.plain ? bunting() : null;
+  if (photo) {
+    // Desen bezin piksel ölçüsünden bağımsız: iplik aralığı her boyda aynı kalır.
+    ctx.save();
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.globalAlpha = BUNTING.alpha;
+    const pattern = ctx.createPattern(photo, 'repeat');
+    // 640 px'lik karoda iplik ~4 px: 0.45 ölçekle cihaz pikselinde ~1.8 px (dpr 1).
+    pattern.setTransform(new DOMMatrix().scale(BUNTING.scale * dpr));
+    ctx.fillStyle = pattern;
+    ctx.fillRect(0, F, cw, ch);
+    ctx.restore();
+  } else {
+    clothOver(ctx, 0, F, cw, ch, flag.plain ? 0.35 : 0.7);
+  }
   // Bezin alt yarısı hafif gölgede (ağırlığıyla sarkan kumaş). Üste ışık
   // konmaz: krem tül "ışıma" gibi duruyordu.
   const sky = ctx.createLinearGradient(0, F, 0, F + ch);
@@ -612,7 +661,7 @@ function bakeBanner(flag) {
   ctx.lineWidth = 1.2 * dpr;
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.32)';
   ctx.strokeRect(0.6 * dpr, F + 0.6 * dpr, cw - 1.2 * dpr, ch - 1.2 * dpr);
-  drawFringe(ctx, geo);
+  if (!flag.plain) drawFringe(ctx, geo);
 }
 
 /**
@@ -840,7 +889,7 @@ function draw(flag, time) {
  * @param {'wave'|'banner'|'crest'} style
  * @param {{war?: boolean}} [opts] war: savaş sancağı (flagPainter drawSabres)
  */
-export function mountFlag(host, nation, cssW, cssH, style = 'wave', { war = false, cssZoom = null } = {}) {
+export function mountFlag(host, nation, cssW, cssH, style = 'wave', { war = false, cssZoom = null, plain = false } = {}) {
   if (!host || !nation?.flag) return null;
 
   // Kap arayüz ölçeğiyle yakınlaştırılmışsa (ui/uiScale.js, 1440p'de 1.33)
@@ -853,7 +902,8 @@ export function mountFlag(host, nation, cssW, cssH, style = 'wave', { war = fals
   const h = Math.round(cssH * dpr);
 
   let flag = host.__flag;
-  if (flag && flag.nation === nation && flag.w === w && flag.h === h && flag.style === style && flag.war === war) return flag;
+  if (flag && flag.nation === nation && flag.w === w && flag.h === h && flag.style === style && flag.war === war
+    && Boolean(flag.plain) === plain) return flag;
 
   // Sabit bayrak (arma, minik) kopmuş eski tuvalinden geri alınır. innerHTML ile her
   // tazelemede baştan kurulan paneller (savaş rıhtımı: hafta başına onlarca arma) her
@@ -883,7 +933,8 @@ export function mountFlag(host, nation, cssW, cssH, style = 'wave', { war = fals
   let canvasW = w;
   let canvasH = h;
   if (style === 'banner') {
-    const F = Math.round(cssH * BANNER.fringe) * dpr;
+    // Düz sancak (gönder ve saçak yok, künye): F yalnız kenar payıdır.
+    const F = plain ? Math.round(2 * dpr) : Math.round(cssH * BANNER.fringe) * dpr;
     const A = cssH * BANNER.amp * dpr;
     const D = cssH * BANNER.droop * dpr;
     const top = F + A + 2 * dpr;
@@ -932,7 +983,7 @@ export function mountFlag(host, nation, cssW, cssH, style = 'wave', { war = fals
   if (!fixed) ensureCloth();
   flag = {
     canvas, ctx: canvas.getContext('2d'), src,
-    nation, w, h, strips, style, geo, war,
+    nation, w, h, strips, style, geo, war, plain,
     amp: ampCss * dpr,
     static: still,
     tiny,

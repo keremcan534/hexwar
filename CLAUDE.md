@@ -24,6 +24,11 @@ Mimari ve tasarım kararları için [README.md](README.md).
 - Çizimi değiştiren her şey `renderer.invalidateCache()` istemeli, yoksa uzak
   zoomda eski görüntü kalır.
 - Sürekli `requestAnimationFrame` döngüsü açma; `game.requestRender()` kullan.
+  Tek istisna canlı yüzeylerin ortak tiki (game.js `idleTick`, flagWave `loop`): deniz ve
+  bayrak boştayken de oynar, zamanlayıcıyla 30/15 Hz'e kısılınca 33-50 ms arası sekip
+  takılma gibi okunuyordu (Kerem 2026-11-25: "hiçbir şey olmasa bile akıcılık az"). Tik
+  rAF'ta, vsync'in tam böleninde ~60 Hz çizer; sekme gizli ya da menü açıkken seyrek
+  yoklamaya döner. Ölçü: `scripts/ui/idle-smooth.plan.mjs`. Başka katman yeni döngü açmaz.
 - Arayüzün malzemesi (panel, düğme, yuva, ölçek, sekme) `src/skin.css`'tedir;
   `index.html` taban stilleri `base`, onu `skin` katmanına alır. Yeni düğme
   sınıfı açma: oradaki aile listesine ekle ve bütün hâllerini (seçili, onay,
@@ -82,6 +87,11 @@ Mimari ve tasarım kararları için [README.md](README.md).
   dalgalanır (flagWave `banner`); savaşta bayrak savaş biçiminde çizilir (flagPainter
   `drawFlag(..., {war})`: hilal ters, simgenin ardında kılıç). Savaş ilanında inen dev sancaklar
   (`ui/warBanners.js`) Kerem'in isteğiyle bağlı DEĞİL. Hepsi yalnız görünüştür.
+  Yeni arayüz resmi Codex CLI ile üretilebilir (gpt-6.2-sol, görsel üretimi açık; URETIM-LISTESI
+  §26-28): haritada yüzen cam kutuların köşe süslü çerçevesi, pasta halkası, bilgi satırı levhası,
+  çıktı çubuğu kanalı ve boş durum gravürleri skin.css §15'tedir. Diplomasi ekranı bir MASADIR:
+  ulus defteri, parşömen üstünde diplomatik durum levhası (`ui/dipSituation.js`, yalnız okur),
+  üç kısa kart ve seçili ulusun şeridi (dosyanın eylem kutuları, `dossierActions`).
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.

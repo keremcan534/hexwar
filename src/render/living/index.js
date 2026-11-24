@@ -494,7 +494,10 @@ export class LivingWorld {
     const now = performance.now();
     const L = this.lastCam;
     const moved = L.x !== cam.x || L.y !== cam.y || L.zoom !== cam.zoom || L.view !== view;
-    if (!moved && now - this.lastDraw < (cam.zoom < 0.45 ? 60 : 30)) return;
+    // Tempoyu Game'in su tiki verir (~60 Hz, ekranın tam böleni; game.js IDLE_FRAME_MS):
+    // eski 30/60 ms kapısı bulutu, gemiyi ve dumanı 15-30 Hz'de bırakıyordu. Kapı yalnız
+    // aynı vsync'te iki kez çizmeyi önler.
+    if (!moved && now - this.lastDraw < 10) return;
     this.lastDraw = now;
     L.x = cam.x;
     L.y = cam.y;

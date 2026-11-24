@@ -158,9 +158,9 @@ export function segmented(options) {
     ${o.attrs ?? ''}${o.on ? ' aria-pressed="true"' : ''}${tipAttr(o.tip, o.arg)}${o.on ? ' disabled' : o.blocked ? ' disabled aria-disabled="true"' : ''}>${o.label}</button>`).join('')}</div>`;
 }
 
-/** Boş durum: tek satır, soluk. */
-export function empty(text) {
-  return `<p class="k-empty">${esc(text)}</p>`;
+/** Boş durum: tek satır, soluk. `vig`: büyük kutuda konunun gravürü (skin.css §15). */
+export function empty(text, vig = '') {
+  return `<p class="k-empty"${vig ? ` data-vig="${vig}"` : ''}>${esc(text)}</p>`;
 }
 
 /** Küçük, inline etiket rozeti. */

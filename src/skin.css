@@ -730,3 +730,108 @@
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='7'%3E%3Cpath d='M0 3.5H40M56 3.5H96' stroke='%23c9a35a' stroke-opacity='.55'/%3E%3Cpath d='M48 .5l3 3-3 3-3-3z' fill='%23c9a35a'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .chron-empty b { text-shadow: 0 2px 6px #000; }
+
+/* ==========================================================================
+   15. RESİMLİ PARÇALAR (2026-11-25; Codex gpt-6.2-sol, URETIM-LISTESI §26-27).
+       Kerem: "arayüzleri kodla yapmaktan çıkar, etrafı diz". Haritada yüzen
+       bilgi paneli, pasta grafiği, bilgi satırı, haftalık çıktı çubuğu ve boş
+       durumlar CSS boyasıydı (ince çizgi, düz renk, SVG çizgi); artık aynı
+       fotoğraf setinden malzemedir. Kaynak sayfalar assets/incoming/arayuz/
+       panel-parcalari.webp ve bos-durum-gravur.webp, dilim slice-sheets.py NATIVE.
+   ========================================================================== */
+:root { --sk-img-bilgi: url('../assets/ui/skin/bilgi-cerceve.webp'); }
+
+/* Bilgi paneli (province, ordu, filo) ve haritada yüzen öteki cam kutular (katman
+   menüsü, harita lejantı, cephe araçları): köşe süslü pirinç çerçeve camın DIŞINA
+   oturur (outset): içerik ve ölçü değişmez, süs yalnız köşede içe girer. Bildirim
+   kartı bilerek dışarıda: sol kenarının rengi olayın tonudur, kartlar üst üste dizilir. */
+.sheet,
+.layer-menu,
+.rgo-map-legend,
+.command-tools {
+  border-style: solid;
+  border-image: var(--sk-img-bilgi) 46 / 22px / 5px stretch;
+}
+
+/* Kültür pastası: tırtıllı pirinç halka içinde, kenarı halkanın altına girer. */
+.pv-pie {
+  position: relative;
+  box-shadow: inset 0 0 7px rgba(0, 0, 0, 0.65), inset 0 2px 3px rgba(255, 255, 255, 0.12);
+}
+.pv-pie::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  background: url('../assets/ui/parts/bezel.webp') center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* Bilgi satırı (Under arms, Primary culture, Unrest): kehribar kenar çizgisi yerine
+   panele gömülü emaye levha, sol ucunda pirinç perçin. */
+.pv-note {
+  padding-left: 17px;
+  border: 0 solid transparent;
+  border-image: url('../assets/ui/parts/row_plate.webp') 7 7 7 23 fill / 4px 4px 4px 13px / 0 stretch;
+  background: none;
+}
+
+/* Haftalık çıktı çubuğu: camlı gösterge kanalı. Pirinç başlıklar çubuğun DIŞINDA
+   (outset); bayrak ve çentik satırları aynı payla içeri alınır ki yüzdeler hizalı kalsın. */
+.ec-flags, .ec-ticks, .ec-bar-wrap { margin-left: 16px; margin-right: 16px; }
+.ec-bar {
+  border-style: solid;
+  border-width: 0;
+  border-image: url('../assets/ui/parts/gauge.webp') 5 27 10 27 fill / 3px 16px 6px 16px / 3px 16px 6px 16px stretch;
+  background: none;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.55);
+}
+.ec-bar.next { box-shadow: 0 0 14px rgba(241, 217, 156, 0.35), 0 5px 12px rgba(0, 0, 0, 0.55); }
+/* Dilimler emaye: renk paletten, parlama ve gölge gerçek emaye şeridinden (bindirme). */
+.ec-seg {
+  background-image: url('../assets/ui/parts/gloss.webp'), linear-gradient(180deg, var(--seg-hi), var(--seg-lo));
+  background-size: 100% 100%, auto;
+  background-blend-mode: overlay, normal;
+}
+
+/* Boş durum: SVG çizgi yerine dökme pirinç ayraç; büyük boş kutuda soluk çelik gravür
+   (barış, defter, liman zinciri, anlaşma, talim, telgraf). Gravür yalnız kutunun
+   konusunu söyler, yazıyı geçmez. */
+.k-empty::before {
+  width: 120px;
+  max-width: 100%;
+  height: 10px;
+  background: url('../assets/ui/crest/divider.webp') center / contain no-repeat;
+  opacity: 0.8;
+}
+.k-empty[data-vig]::before,
+.empty[data-vig]::before,
+.mil-empty[data-vig]::before {
+  content: '';
+  display: block;
+  width: 132px;
+  height: 92px;
+  margin: 4px auto 10px;
+  background: var(--vig) center / contain no-repeat;
+  opacity: 0.3;
+}
+[data-vig="peace"] { --vig: url('../assets/ui/vignette/peace.webp'); }
+[data-vig="ledger"] { --vig: url('../assets/ui/vignette/ledger.webp'); }
+[data-vig="harbour"] { --vig: url('../assets/ui/vignette/harbour.webp'); }
+[data-vig="accord"] { --vig: url('../assets/ui/vignette/accord.webp'); }
+[data-vig="drill"] { --vig: url('../assets/ui/vignette/drill.webp'); }
+[data-vig="waiting"] { --vig: url('../assets/ui/vignette/waiting.webp'); }
+.mil-empty[data-vig] { text-align: center; }
+
+/* Kalkınma kademesi (Construction): düz pirinç çubuklar yerine lamba yuvaları,
+   boş ve yanan kehribar (panel-parcalari §26). Yalnız 15 px'lik izde: haritadaki
+   küçük pullarda (6×9) lamba okunmaz, orada eski pul kalır. */
+.k-dvrow .ec-dvlv .k-pips { gap: 2px; }
+.k-dvrow .ec-dvlv .k-pips > i {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 0;
+  background: url('../assets/ui/parts/pip_off.webp') center / 100% 100% no-repeat;
+  box-shadow: none;
+}
+.k-dvrow .ec-dvlv .k-pips > i.on { background-image: url('../assets/ui/parts/pip_on.webp'); }

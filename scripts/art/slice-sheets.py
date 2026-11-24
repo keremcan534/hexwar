@@ -48,6 +48,89 @@ SHEETS = [
      'toggle_off,toggle_on,check_off,check_on,slider_groove,slider_knob,dropdown,scroll_thumb,radio_off,radio_on'),
 ]
 
+# Kendi çözünürlüğünde kalan sayfalar (9 dilim ve çubuk: ikon boyuna büyütülürse kenar bulanır,
+# 72 px'lik lamba 1000 px olur). 'native' = macenta ayrıştırma + bileşen, okuma sırası satır
+# kovası (üst kenar // 150) sonra soldan; 'engrave' = siyah zeminli gravür, eşit hücreler,
+# alfa = parlaklık (çizgi fildişi kalır, zemin saydam).
+NATIVE = [
+    # §26 (2026-11-25, Codex gpt-6.2-sol): yüzer bilgi paneli 9 dilimi, bilgi satırı levhası,
+    # camlı gösterge kanalı, pasta grafiği halkası, kademe lambası (boş/yanan).
+    # Çerçeve skin/ altına gider: accent-skin.py vurgu renkli eşlerini oradan üretir.
+    ('arayuz/panel-parcalari.webp', 'assets/ui/parts', 'native',
+     'assets/ui/skin/bilgi-cerceve,row_plate,gauge,bezel,pip_off,pip_on'),
+    # §27 (2026-11-25, Codex): boş durum gravürleri, 3x2 eşit hücre.
+    ('arayuz/bos-durum-gravur.webp', 'assets/ui/vignette', 'engrave3x2', 'peace,ledger,harbour,accord,drill,waiting'),
+    # §28 (2026-11-25, Codex): diplomasi masasının kart gravürleri ve harita süsü.
+    ('arayuz/diplomasi-gravur.webp', 'assets/ui/vignette', 'engrave3x2', 'flags,globe,treaty,compass,dividers,dispatch'),
+]
+
+
+def unmix_magenta(rgb):
+    """Macenta zemini ayrıştırır. Alfa zemine UZAKLIKTAN gelir: kanal başına en küçük alfa
+    (klasik ayrıştırma) pirincin kırmızı ve mavisini zemin sayıp içini yeşile çeviriyordu.
+    Yalnız kenar şeridi (yarı saydam) zeminden arındırılır: c = a·F + (1-a)·K."""
+    import numpy as np
+    c = rgb.astype(np.float32)
+    k = np.array([255.0, 0.0, 255.0], dtype=np.float32)
+    d = np.sqrt(((c - k) ** 2).sum(axis=2))
+    # Codex zemini tam #FF00FF değil (uzaklık p99 ~17, en çok ~45): eşik onun üstünde.
+    a = np.clip((d - 55.0) / 110.0, 0.0, 1.0)
+    safe = np.maximum(a, 1e-3)[..., None]
+    f = np.where(a[..., None] < 1.0, np.clip((c - (1.0 - safe) * k) / safe, 0, 255), c)
+    # Kenarda kalan pembe sızıntı: kırmızı ve mavi yeşilin çok üstündeyse ikisini de kıs.
+    spill = np.clip(np.minimum(f[..., 0], f[..., 2]) - f[..., 1] - 40.0, 0, None) * (a < 1.0)
+    f[..., 0] -= spill
+    f[..., 2] -= spill
+    return np.clip(f, 0, 255), a
+
+
+def slice_native(src, out_dir, names):
+    import numpy as np
+    from scipy import ndimage
+    rgb = np.asarray(Image.open(src).convert('RGB'))
+    f, a = unmix_magenta(rgb)
+    labels, count = ndimage.label(a > 0.5)
+    boxes = [b for b in ndimage.find_objects(labels) if (b[0].stop - b[0].start) * (b[1].stop - b[1].start) > 400]
+    boxes.sort(key=lambda b: (b[0].start // 150, b[1].start))
+    names = names.split(',')
+    if len(boxes) != len(names):
+        raise SystemExit(f'{src}: {len(boxes)} parça bulundu, {len(names)} ad var')
+    os.makedirs(out_dir, exist_ok=True)
+    for b, name in zip(boxes, names):
+        y0, y1 = max(0, b[0].start - 2), min(rgb.shape[0], b[0].stop + 2)
+        x0, x1 = max(0, b[1].start - 2), min(rgb.shape[1], b[1].stop + 2)
+        rgba = np.dstack([f[y0:y1, x0:x1], a[y0:y1, x0:x1] * 255]).astype(np.uint8)
+        # Adında '/' olan parça kökten yollanır (başka klasöre giden tek parça).
+        dest = os.path.join(ROOT, f'{name}.webp') if '/' in name else os.path.join(out_dir, f'{name}.webp')
+        # Yarı boy: ekranda en büyük kullanım 9 dilimin ~%30'u, yarı boy yine 1.5x örnekli.
+        part = Image.fromarray(rgba, 'RGBA')
+        part = part.resize((max(1, part.width // 2), max(1, part.height // 2)), Image.LANCZOS)
+        part.save(dest, quality=92, method=6)
+        print('  ', name, (x1 - x0, y1 - y0))
+
+
+def slice_engrave(src, out_dir, names, cols=3, rows=2, size=256):
+    import numpy as np
+    im = Image.open(src).convert('RGB')
+    w, h = im.size
+    names = names.split(',')
+    os.makedirs(out_dir, exist_ok=True)
+    for i, name in enumerate(names):
+        cx, cy = i % cols, i // cols
+        cell = np.asarray(im.crop((cx * w // cols, cy * h // rows, (cx + 1) * w // cols, (cy + 1) * h // rows))).astype(np.float32)
+        lum = cell.max(axis=2) / 255.0
+        alpha = np.clip((lum - 0.08) / 0.8, 0.0, 1.0)
+        ys, xs = np.nonzero(alpha > 0.04)
+        y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+        # Çizgi tek renk fildişi: tonu alfa taşır, temada CSS rengi bozulmasın.
+        ink = np.empty(cell.shape, dtype=np.float32)
+        ink[...] = (236, 227, 205)
+        rgba = np.dstack([ink, alpha * 255])[y0:y1, x0:x1].astype(np.uint8)
+        out = Image.fromarray(rgba, 'RGBA')
+        out.thumbnail((size, size), Image.LANCZOS)
+        out.save(os.path.join(out_dir, f'{name}.webp'), quality=92)
+        print('  ', name, out.size)
+
 
 def slice_magenta(src, out_dir, grid, size, names):
     tmp = tempfile.mkdtemp(prefix='dilim-')
@@ -187,6 +270,17 @@ if __name__ == '__main__':
             finish_arrows(os.path.join(ROOT, out))
         if '/crest' in out:
             finish_crests(os.path.join(ROOT, out))
+    for src, out, mode, names in NATIVE:
+        if only and not any(o in src for o in only):
+            continue
+        if not os.path.exists(os.path.join(INC, src)):
+            print('yok, atlandı:', src)
+            continue
+        print(src)
+        if mode == 'native':
+            slice_native(os.path.join(INC, src), os.path.join(ROOT, out), names)
+        else:
+            slice_engrave(os.path.join(INC, src), os.path.join(ROOT, out), names)
     if not only:
         slice_logo()
         slice_effects()

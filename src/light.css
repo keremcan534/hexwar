@@ -164,3 +164,7 @@
     :is(.k-seg-b.on, .k-btn.primary, .k-btn.on, .mil-tabs > button.active)[data-cat]) { color: #ffffff; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6); }
 :root[data-ui-theme="light"] .k-fx.good { color: #2f7a26; }
 :root[data-ui-theme="light"] .k-fx.bad { color: #b0402c; }
+
+/* Boş durum gravürü (skin.css §15) fildişi çizgidir: açık zeminde koyu mürekkebe döner. */
+:root[data-ui-theme="light"] [data-vig]::before { filter: invert(1) sepia(0.35); opacity: 0.38; }
+:root[data-ui-theme="light"] .dip-card-art { filter: invert(1) sepia(0.35); }

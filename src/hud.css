@@ -1142,7 +1142,9 @@ select option { background: #11181b; color: #e8dcc0; }
    kabından büyüktür). Sekme şeridi ve künye yazısı bezin genişliği kadar sağdan başlar.
    Ölçüler değişkendir, kırılımlar yalnız onları değiştirir. Dar pencerede künyedeki
    sayılar (state, şehir) gizlenir (1920'de bile kartuşa biniyordu; ulus ekranında var); savaş/barış durumu her genişlikte kalır. */
-:root { --flag-w: 168px; --flag-h: 112px; --flag-x: 15px; --flag-y: 17px; }
+/* 2026-11-25: gönder ve tepe süsü kalktı (Kerem: "direkte durması hoşuma gitmedi"), bez
+   gönder olmadan, Vic3'teki gibi kendi başına dalgalanır; saçak da yok (hud.js plain). */
+:root { --flag-w: 168px; --flag-h: 112px; --flag-x: 10px; --flag-y: 14px; }
 @media (max-width: 1899px) { :root { --flag-w: 144px; --flag-h: 96px; } }
 @media (max-width: 1599px) { :root { --flag-w: 120px; --flag-h: 80px; } }
 @media (max-width: 1365px) { :root { --flag-w: 104px; --flag-h: 69px; } }
@@ -1157,9 +1159,11 @@ select option { background: #11181b; color: #e8dcc0; }
   padding: 0;
   filter: none;
 }
-/* Gönder: pirinç silindir (yandan ışık), tepe süsü mızrak ucu. */
+/* Gönder: pirinç silindir ve mızrak ucu ESKİDEN buradaydı; 2026-11-25'ten beri gizli. */
 .nation-crest::before,
 .nation-crest::after { clip-path: none; inset: auto; }
+.nation-crest::before,
+.nation-crest::after { display: none; }
 .nation-crest::before {
   left: 10px;
   top: 18px;

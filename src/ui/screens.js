@@ -1601,7 +1601,7 @@ export class Screens {
     </div>
     <div class="card">
       <div class="card-head"><h3>Saved games</h3><small>kept in this browser · export a save to move it to another window</small></div>
-      ${rows.length ? `<div class="save-list">${rows.map(row).join('')}</div>` : '<p class="empty">No saves yet.</p>'}
+      ${rows.length ? `<div class="save-list">${rows.map(row).join('')}</div>` : '<p class="empty" data-vig="ledger">No saves yet.</p>'}
       <div class="row-buttons"><button class="action" data-save-import>Import from file…</button>
         <input type="file" id="save-import-file" accept=".json,application/json" hidden /></div>
     </div>`;

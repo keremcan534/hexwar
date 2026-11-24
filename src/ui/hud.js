@@ -2034,10 +2034,12 @@ export class Hud {
     const world = this.game.world;
     // Savaştaysak sancak savaş biçimindedir (hilal ters, simgenin ardında kılıç).
     this.topFlagWar = world.nations.some((o) => o.alive && o.id !== me.id && atWar(world, me.id, o.id));
-    // Sancak kipinde: bez çerçevede kırpılmaz, gönderden serbest dalgalanır ve saçağı,
-    // sarkması kabın dışına taşar (Kerem: "sol üstteki bayrak epey büyük olsun ve
-    // özgürce dalgalansın"). Kabın ölçüsü bezin ölçüsüdür, CSS kırılımları belirler.
-    mountFlag(host, me, Math.round(box.width) || 120, Math.round(box.height) || 80, 'banner', { war: this.topFlagWar });
+    // Sancak kipinde: bez çerçevede kırpılmaz, serbest dalgalanır, sarkması kabın dışına
+    // taşar (Kerem: "sol üstteki bayrak epey büyük olsun ve özgürce dalgalansın").
+    // Düz (plain): gönder ve altın saçak yok, kumaş yün bayrak fotoğrafı (Kerem 2026-11-25:
+    // "hala hafif dandiklik var, direkte durması da hoşuma gitmedi"). Kabın ölçüsü bezin
+    // ölçüsüdür, CSS kırılımları belirler.
+    mountFlag(host, me, Math.round(box.width) || 120, Math.round(box.height) || 80, 'banner', { war: this.topFlagWar, plain: true });
   }
 
   /**

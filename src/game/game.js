@@ -7,7 +7,7 @@ import { generateWorld, HEX_SIZE } from '../world/worldgen.js';
 import { hasPassage } from './nationBirth.js';
 import { generateNations } from '../world/nations.js';
 import { Camera } from '../render/camera.js';
-import { CACHE_ZOOM, Renderer } from '../render/renderer.js';
+import { Renderer } from '../render/renderer.js';
 import { PointerController } from '../input/pointer.js';
 import { pixelToHex } from '../core/hex.js';
 import { findPath } from '../core/pathfind.js';
@@ -140,6 +140,16 @@ const DAYS_PER_WEEK = 7;
  */
 const INPUT_QUIET_MS = 220;
 const TURN_DEFER_MAX_MS = 1500;
+/**
+ * BOŞTA KARE TEMPOSU (Kerem 2026-11-25: "hiçbir şey olmasa bile akıcılık az"). Duraklatılmış
+ * haritada deniz, bulut, gemi, tren ve duman yalnız su tikinde ilerler. Tik eskiden setTimeout
+ * ile 30 Hz'e (uzak zoomda 15'e) kısılıydı: hem az, hem düzensiz — 33 ms'lik zamanlayıcı bir
+ * sonraki vsync'i beklediği için 60 Hz ekranda aralıklar 33 ile 50 ms arasında sekiyordu, göz
+ * bunu takılma okur. Tik artık rAF'tadır ve ekran tazelemesinin TAM BÖLENİNDE ~60 Hz akar
+ * (60 Hz → her vsync, 120/144 → ikide bir, 165 → üçte bir, 240 → dörtte bir): aralık sabit.
+ * Bedeli küçük: su karesi ~2 ms CPU, ~1-1.5 ms GPU (ölçüldü, scripts/ui/idle-smooth.plan.mjs).
+ */
+const IDLE_FRAME_MS = 1000 / 60;
 /** Dusman province'i alindiktan sonra yeni taarruzdan once ikmal suresi. */
 const CONSOLIDATION_WEEKS = 2;
 
@@ -201,7 +211,9 @@ export class Game {
     this.nextPeaceOfferId = 1;
     this.dirty = false;
     this.frameHandle = 0;
-    this.waterTimer = 0;     // su animasyonunun kısılmış zamanlayıcısı
+    this.waterTimer = 0;     // örtülü (menü/gizli sekme) su yoklaması
+    this.vsyncMs = 1000 / 60; // ekranın vsync aralığı: art arda rAF'lardan, en küçüğe hızlı iner
+    this.lastRafTs = 0;
     this.autosaveEnabled = true;
     // Saat gün gün akar; oyunun sistemleri (ekonomi, muharebe, cephe) haftalık
     // çözülür. Böylece tarih akıcı ilerlerken denge haftalık kalır.
@@ -1982,6 +1994,7 @@ export class Game {
 
   frame = (ts = performance.now()) => {
     this.frameHandle = 0;
+    this.noteVsync(ts);
     this.perf?.beginFrame(ts);
     const moving = this.input.update();
     // Yalnız su tiki: 2B harita değişmediyse GL deniz tek başına çizilir
@@ -2053,47 +2066,60 @@ export class Game {
   };
 
   /**
-   * Deniz animasyonu sürekli rAF döngüsü AÇMAZ: kısılmış bir zamanlayıcı
-   * requestRender'ı dürter (yakında ~25, uzak zoomda ~12 kare/sn — yavaş su
-   * için yeterli, tam kare hızının maliyetinin yarısından azı). Sekme
-   * gizliyken çizilmez; su çizmeyen kiplerde (inşaat/barış) waterActive
-   * false döner ve zincir kendiliğinden durur, ilk requestRender'da yeniden
-   * kurulur.
+   * Deniz ve yaşayan dünya tiki (bkz. IDLE_FRAME_MS). Zincir YALNIZ su canlıyken sürer:
+   * su çizmeyen kiplerde (inşaat/barış) waterActive false döner ve zincir kendiliğinden
+   * durur, ilk requestRender'da yeniden kurulur. Tik rAF'tadır ama her vsync'te çizmez:
+   * `idleTick` ekranın tam bölenine düşen vsync'te bir su karesi ister, aradakilerde
+   * yalnız sırasını bekler (boş geri çağrı, çizim ve DOM yazımı yok).
    */
   scheduleWaterFrame(minDelay = 0) {
     if (this.waterTimer || this.frameHandle) return;
-    // Eşik önbellek zoom'uyla senkron: uzak dalda su daha seyrek dürtülür.
-    // Not: bu kadans yalnız DURAĞAN haritanın su tazelemesidir; etkileşim
-    // (pan/zoom/sim) kareleri rAF'ta sınırsız akar (144 Hz+). PC hedefi
-    // için boşta 25→30 fps'e çekildi; tam kare hızında boşta su, ambiyans
-    // için ölçüsüz CPU/pil maliyeti olur (bkz. CLAUDE.md rAF kuralı).
-    const interval = this.camera.zoom < CACHE_ZOOM ? 66 : 33;
-    // Faz kilidi: gecikme son su karesine GÖRE hesaplanır. Sabit "kare biti
-    // + interval" zamanlaması kare süresi ve zamanlayıcı sapmasıyla toplanıp
-    // 40 ms hedefte 33-104 ms arası düzensiz adımlar üretiyordu (ölçüldü);
-    // duraklatılmış oyunda hissedilen mikro takılmanın bir bileşeni buydu.
-    const since = performance.now() - (this.lastWaterAt ?? 0);
-    const delay = Math.max(minDelay, interval - since);
-    this.waterTimer = setTimeout(() => {
-      this.waterTimer = 0;
-      // Sekme gizliyken ya da ana menü haritayı örterken çizim boşa gider;
-      // zamanlayıcı ucuz olduğundan zincir canlı tutulur, görünürlük dönünce
-      // ilk tikte kaldığı yerden akar. Örtülüyken yoklama SEYREK ve sabittir:
-      // faz kilidi `lastWaterAt`e bakar, o da örtülüyken ilerlemez — gecikme
-      // 0'a çöküyor ve zincir setTimeout(0) döngüsüne dönüyordu (ölçüldü:
-      // menü açıkken 2 sn'de 408 uyanma; açık haritada 25). Perde kalkınca
-      // menü zaten bir kare ister, yoklama yalnız sekme dönüşünü yakalar.
-      const covered = document.visibilityState === 'hidden'
-        || document.body.classList.contains('menu-open');
-      if (covered) this.scheduleWaterFrame(250);
-      else {
-        this.lastWaterAt = performance.now();
-        // Kirli işareti KOYMAZ: su tiki haritayı değiştirmez; kare yalnız
-        // GL denizini çizebilir (frame → canDrawWaterOnly).
-        this.waterPending = true;
-        if (!this.frameHandle) this.frameHandle = requestAnimationFrame(this.frame);
-      }
-    }, delay);
+    // Sekme gizliyken ya da ana menü haritayı örterken çizim boşa gider: yoklama SEYREK
+    // ve sabit bir zamanlayıcıdır (menü açıkken 2 sn'de 408 uyanma ölçülmüştü). Perde
+    // kalkınca menü zaten bir kare ister, yoklama yalnız sekme dönüşünü yakalar.
+    const covered = document.visibilityState === 'hidden'
+      || document.body.classList.contains('menu-open');
+    if (covered || minDelay) {
+      this.waterTimer = setTimeout(() => {
+        this.waterTimer = 0;
+        this.scheduleWaterFrame();
+      }, Math.max(minDelay, 250));
+      return;
+    }
+    this.frameHandle = requestAnimationFrame(this.idleTick);
+  }
+
+  idleTick = (ts = performance.now()) => {
+    this.frameHandle = 0;
+    // Bekleyen iş varsa (requestRender, kamera, dilim) beklemeden tam kare.
+    if (this.dirty) {
+      this.frame(ts);
+      return;
+    }
+    this.noteVsync(ts);
+    // Yarım vsync payı: zamanlama gürültüsü bir kareyi bir sonraki vsync'e itmesin.
+    if (ts - (this.lastWaterAt ?? 0) >= IDLE_FRAME_MS - this.vsyncMs * 0.5) {
+      this.lastWaterAt = ts;
+      // Kirli işareti KOYMAZ: su tiki haritayı değiştirmez; kare yalnız GL denizini ve
+      // yaşayan dünyayı çizebilir (frame → canDrawWaterOnly).
+      this.waterPending = true;
+      this.frame(ts);
+      return;
+    }
+    if (!this.renderer.waterActive()) return;
+    this.frameHandle = requestAnimationFrame(this.idleTick);
+  };
+
+  /**
+   * Ekranın vsync aralığı. rAF zaman damgaları vsync'e oturur; art arda iki geri çağrının
+   * farkı en küçük hâliyle bir vsync'tir. Kare atlanınca fark büyür: tahmin küçüğe HEMEN,
+   * büyüğe yavaş gider (monitör değişirse birkaç saniyede yetişir).
+   */
+  noteVsync(ts) {
+    const d = ts - this.lastRafTs;
+    this.lastRafTs = ts;
+    if (d < 3 || d > 50) return;
+    this.vsyncMs = d < this.vsyncMs ? d : this.vsyncMs + (d - this.vsyncMs) * 0.01;
   }
 
   destroy() {

@@ -668,7 +668,7 @@ export function renderTrade(game, me, state) {
       label: esc(other.name),
       value: `<button class="k-btn sm" data-uc-embargo-lift="${other.id}">Lift</button>`,
     })))
-    : empty('No embargoes');
+    : empty('No embargoes', 'harbour');
 
   return `${kpis}
     <div class="k-split wide-left">

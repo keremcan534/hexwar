@@ -542,3 +542,24 @@ slice-sheets.py satırları:
 > pointing drop with acanthus leaves, flat top edge.
 > (6) A pair of feathered wings only, spread wide and flat, about 600×170, with an EMPTY gap in the
 > centre (an emblem is placed between them by code).
+
+## 26-28. Codex ile üretilenler (2026-11-25, tamamlandı, oyunda)
+
+Kerem 2026-11-25: "ChatGPT Codex gpt-6.2-sol yüksek ayarına bağlan, arayüzleri kodla yapmaktan çıkar,
+etrafı diz". Sayfaları Codex CLI üretti (istem kalıbı: "Use your image generation tool to create ONE
+image ..., save it as sheet.png"). Dilim `scripts/art/slice-sheets.py` NATIVE (kendi çözünürlüğünde,
+zemine uzaklıktan alfa; ikon dilimleyicisi parçaları ikon boyuna büyütüyordu).
+
+- §26 `arayuz/panel-parcalari.webp` (macenta): yüzer bilgi paneli 9 dilimi (köşe süslü pirinç kenar,
+  `assets/ui/skin/bilgi-cerceve.webp` + vurgu eşleri), bilgi satırı levhası, camlı gösterge kanalı,
+  tırtıllı pasta halkası, kademe lambası boş/yanan. Bağlar skin.css §15.
+- §27 `arayuz/bos-durum-gravur.webp` (siyah, 3x2): boş durum çelik gravürleri (barış, defter, liman
+  zinciri, anlaşma, talim davulu, cep saati) → `assets/ui/vignette/`, `data-vig`.
+- §28 `arayuz/diplomasi-gravur.webp` (siyah, 3x2): çapraz sancak, küre, mühürlü antlaşma destesi,
+  pusula gülü, pergel, mühürlü mektup → diplomasi masasının kartları ve harita pusulası.
+- `arayuz/parsomen.webp`: düz atlas parşömeni (yazısız) → `assets/ui/paper/parsomen.webp`
+  (doygunluk %55, parlaklık %86), diplomatik durum levhasının kâğıdı.
+- Diplomasi ekranı konsepti (Codex, mevcut ekran görüntüsü + stil referansıyla): solda ulus defteri,
+  sağda parşömen levha (biz + komşular, ilişki çizgileri, sınır baskısı oku) ve üç kısa kart, altta
+  seçili ulusun şeridi (lider, ilişki, dosyanın eylem kutuları). Uygulama `ui/diplomacyScreen.js`
+  + `ui/dipSituation.js`, düzen `src/diplomacy.css` "MASA".

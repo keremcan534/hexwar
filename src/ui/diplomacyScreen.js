@@ -36,6 +36,7 @@ import { esc, kpi as kitKpi, kpiRow as kitKpiRow, panel as kitPanel, tipAttr } f
 import { diplomacyArt, eventArt, gaugeArt, resourceArt } from './icons/art.js';
 import { leaderView } from '../game/leaders.js';
 import { leaderByline, leaderPhoto, leaderStrip } from './leaderPortrait.js';
+import { LINE_STYLES, mountSituation, situationModel } from './dipSituation.js';
 
 const tip = (text) => tipAttr({ text });
 // Düğme ve başlık içindeki resim metin boyunda ('inline': negatif kenarlı
@@ -208,7 +209,7 @@ function commitmentsPanel(screens, world, view) {
   section('Casus belli', c.cbs.map((cb) => `<div class="dip-crow"><button type="button" class="dip-cname" data-nation="${cb.id}">${esc(cb.name)}</button><small>${esc(cb.province)} · ${cb.left}w</small><button type="button" class="k-btn sm danger${screens.warConfirm === cb.id ? ' confirming' : ''}" data-war="${cb.id}"${tip(`Declare war on ${cb.name}\nTheir refused demand gives us a free, justified war for ${cb.province}. If we let it lapse, we have backed down (prestige −5).${screens.warConfirm === cb.id ? '' : '\nClick twice to confirm.'}`)}>${screens.warConfirm === cb.id ? 'Confirm war?' : 'Declare · free'}</button></div>`));
   section('Envoys', c.envoys.map((e) => `<div class="dip-crow"><button type="button" class="dip-cname" data-nation="${e.id}">${esc(e.name)}</button><small>at their court: ${fmt(e.standing, 0)} of +${e.cap}</small><button type="button" class="k-btn sm" data-dip-act="recall" data-dip-arg="${e.id}"${tip(`Recall our envoy from ${e.name}\nFree. What was gained fades slowly (half-life about 69 weeks).`)}>Recall</button></div>`));
   if (c.overlord) section('Overlord', [`<div class="dip-crow"><button type="button" class="dip-cname" data-nation="${c.overlord.id}">${esc(c.overlord.name)}</button><small>our foreign policy is theirs</small></div>`]);
-  return sections.length ? sections.join('') : '<p class="empty">No commitments. Envoys, pacts and guarantees appear here.</p>';
+  return sections.length ? sections.join('') : '<p class="empty" data-vig="accord">No commitments. Envoys, pacts and guarantees appear here.</p>';
 }
 
 /** DİPLOMASİ MASASI (P). */
@@ -252,6 +253,12 @@ export function renderDiplomacyScreen(screens, me) {
     neighbour: 'neighbour',
     other: '—',
   }[row.standing]);
+  // Masanın seçili ulusu (alt şerit, haritada altın kenar). Seçim yoksa önce
+  // savaştığımız, sonra ilk komşu.
+  const pickable = (id) => view.rows.some((r) => r.id === id);
+  const selectedId = pickable(screens.dipSelect) ? screens.dipSelect
+    : (view.rows.find((r) => r.standing === 'war') ?? view.rows.find((r) => r.neighbour) ?? view.rows[0]).id;
+  screens.dipSelect = selectedId;
   let lastGroup = null;
   const table = rows.map((row) => {
     const group = groupOf(row);
@@ -261,9 +268,9 @@ export function renderDiplomacyScreen(screens, me) {
     const bar = Math.round(Math.min(1, ratio / 3) * 100);
     // "Komşu" ilişki sütununda zaten yazıyorsa alt satırda tekrarlanmaz.
     const tags = row.tags.filter((t) => !(t === 'neighbour' && row.standing === 'neighbour')).join(' · ');
-    return `${heading}<div class="dip-row s-${row.standing}">
+    return `${heading}<div class="dip-row s-${row.standing}${row.id === selectedId ? ' sel' : ''}" data-dip-row="${row.id}">
       <span class="flag" data-flag-nation="${row.id}" data-flag-w="30" data-flag-h="20" data-flag-style="crest"></span>
-      <button type="button" class="dip-name" data-nation="${row.id}"${tip(`${row.name}\nOpen the dossier: relations, agreements, pressure and every action.`)}><b>${esc(row.name)}</b><small>${esc(tags)}</small></button>
+      <button type="button" class="dip-name" data-dip-select="${row.id}"${tip(`${row.name}\nSelect: the strip below shows their leader and every action. Double-click opens the full dossier.`)}><b>${esc(row.name)}</b><small>${esc(tags)}</small></button>
       ${group === 'elsewhere'
     ? `<button type="button" class="dip-rel dip-rel-war" data-dip-conflict="${warring.get(row.id).key}"${tip('Open this war: sides, score, losses and occupied states.')}>${esc(relationText(row))}</button>`
     : `<span class="dip-rel">${esc(relationText(row))}</span>`}
@@ -308,7 +315,7 @@ export function renderDiplomacyScreen(screens, me) {
         <b>${esc(w.name)}</b><em>${w.score > 0 ? '+' : ''}${w.score}</em>
         <small>${w.lossesOurs > 0 ? `−${formatPopulation(w.lossesOurs)}` : '0'} / ${w.lossesTheirs > 0 ? `−${formatPopulation(w.lossesTheirs)}` : '0'} men · ${w.weeks}w · holds ${w.holdTheirs}/${w.holdOurs}</small>
       </div>`).join('')}`
-    : '<p class="empty">At peace.</p>';
+    : '<p class="empty" data-vig="peace">At peace.</p>';
   const offers = (game.peaceOffers ?? []).filter((entry) => entry.to === me.id).map((entry) => screens.peaceOfferCard(entry)).join('');
   const focus = screens.warFocus ? conflicts.find((c) => c.key === screens.warFocus) ?? null : null;
   // Seçili savaş bittiyse panel sessizce kapanır.
@@ -320,23 +327,123 @@ export function renderDiplomacyScreen(screens, me) {
         <b>${sideName(c.attackers)} <i>vs</i> ${sideName(c.defenders)}</b><em>${c.score > 0 ? '+' : ''}${c.score}</em>
         <small>${c.weeks}w · held ${c.holdA}/${c.holdB}${c.battles ? ` · ${c.battles} ${c.battles === 1 ? 'battle' : 'battles'}` : ''}</small>
       </button>`).join('')
-    : '<p class="empty">No other wars in the world.</p>';
+    : '<p class="empty" data-vig="waiting">No other wars in the world.</p>';
   const requests = view.requests.length
     ? kitPanel('Requests', view.requests.map(requestRow).join(''), { sub: '', cls: 'dip-requests' })
     : '';
 
-  return `${kpis}
-    <div class="k-split dip-split">
-      ${kitPanel('Nations', `${filters}<div class="dip-table v2">${head}${table}</div>`, { sub: `${view.rows.length} nations · ${view.neighbours} neighbours`, cls: 'dip-nations' })}
-      <div class="k-stack">
-        ${requests}
-        ${focus ? screens.conflictPanel(focus) : ''}
-        ${offers ? kitPanel('Peace offers', offers, { sub: 'answer within six weeks' }) : ''}
-        ${kitPanel('Our wars', warList, { sub: 'score · losses · weeks · states held', right: '' })}
-        ${kitPanel('World wars', worldList, { sub: `${conflicts.length} ${conflicts.length === 1 ? 'war' : 'wars'} · click for details` })}
-        ${kitPanel('Commitments', commitmentsPanel(screens, world, view), { sub: `${view.allies} of ${view.maxAllies} alliance seats · ${view.envoys.used} of ${view.envoys.slots} envoys`, cls: 'dip-commit' })}
-      </div>
+  // MASA (2026-11-25, Codex konsepti; Kerem: "diplomacy ekranı çok boş"): solda ulus
+  // defteri; sağda diplomatik durum levhası ve altında üç kısa kart; altta seçili
+  // ulusun şeridi. Kartlar birkaç satır gösterir, fazlası levhanın yerinde tam
+  // liste olarak açılır (iç içe küçük kaydırma kutusu yok).
+  const expand = focus ? null : screens.dipExpand ?? null;
+  const back = '<button type="button" class="k-btn sm" data-dip-expand="">Map</button>';
+  const warItems = [
+    ...wars.crises.map((c) => `<div class="dip-war crisis"><b>${esc(c.name)}</b><small>ultimatum · war in ${c.weeksLeft}w</small></div>`),
+    ...wars.wars.map((w) => `<div class="dip-war ${w.score > 8 ? 'winning' : w.score < -8 ? 'losing' : 'even'}" data-tip="war" data-tip-arg="${w.enemyId}">
+        <b>${esc(w.name)}</b><em>${w.score > 0 ? '+' : ''}${w.score}</em>
+        <small>${w.lossesOurs > 0 ? `−${formatPopulation(w.lossesOurs)}` : '0'} / ${w.lossesTheirs > 0 ? `−${formatPopulation(w.lossesTheirs)}` : '0'} men · ${w.weeks}w · holds ${w.holdTheirs}/${w.holdOurs}</small>
+      </div>`),
+  ];
+  const worldItems = conflicts.map((c) => `<button type="button" class="dip-war dip-conflict${focus?.key === c.key ? ' on' : ''}" data-dip-conflict="${c.key}">
+        <span class="dip-cflags"><span class="flag" data-flag-nation="${c.lead[0]}" data-flag-w="24" data-flag-h="16" data-flag-style="crest"></span><span class="flag" data-flag-nation="${c.lead[1]}" data-flag-w="24" data-flag-h="16" data-flag-style="crest"></span></span>
+        <b>${sideName(c.attackers)} <i>vs</i> ${sideName(c.defenders)}</b><em>${c.score > 0 ? '+' : ''}${c.score}</em>
+        <small>${c.weeks}w · held ${c.holdA}/${c.holdB}${c.battles ? ` · ${c.battles} ${c.battles === 1 ? 'battle' : 'battles'}` : ''}</small>
+      </button>`);
+  const commitItems = commitmentLines(view.commitments);
+  const deskCard = (key, title, sub, items, emptyText, art) => {
+    const shown = items.slice(0, key === 'commit' ? 3 : 2);
+    const more = items.length - shown.length;
+    const opener = more > 0 || (key === 'commit' && items.length)
+      ? `<button type="button" class="dip-more" data-dip-expand="${key}">${more > 0 ? `+${more} more · ` : ''}open the list</button>` : '';
+    const body = items.length
+      ? `${shown.join('')}${opener}`
+      : `<p class="dip-card-empty">${esc(emptyText)}</p>`;
+    return `<section class="k-panel dip-card${items.length ? '' : ' is-empty'}${expand === key ? ' on' : ''}">
+        <header class="k-head"><h3>${esc(title)}</h3>${sub ? `<small>${sub}</small>` : ''}</header>
+        <div class="k-body">${body}</div>
+        <i class="dip-card-art ${art}" aria-hidden="true"></i>
+      </section>`;
+  };
+  const cards = `<div class="dip-cards">
+      ${deskCard('wars', 'Our wars', wars.wars.length ? `${wars.wars.length} at war` : '', warItems, 'At peace.', 'flags')}
+      ${deskCard('world', 'World wars', conflicts.length ? `${conflicts.length} ${conflicts.length === 1 ? 'war' : 'wars'}` : '', worldItems, 'No other wars in the world.', 'globe')}
+      ${deskCard('commit', 'Commitments', `${view.allies}/${view.maxAllies} allies`, commitItems, 'No commitments yet.', 'treaty')}
     </div>`;
+  const situation = kitPanel('Diplomatic situation', `<canvas class="dip-sit-map" data-dip-sit aria-label="Map of our nation and its neighbours"></canvas>${situationLegend()}`,
+    { sub: 'us and our neighbours · click a nation to select it', cls: 'dip-sit' });
+  const centre = focus ? screens.conflictPanel(focus)
+    : expand === 'wars' ? kitPanel('Our wars', warList, { sub: 'score · losses · weeks · states held', right: back, cls: 'dip-full' })
+      : expand === 'world' ? kitPanel('World wars', worldList, { sub: `${conflicts.length} ${conflicts.length === 1 ? 'war' : 'wars'} · click for details`, right: back, cls: 'dip-full' })
+        : expand === 'commit' ? kitPanel('Commitments', commitmentsPanel(screens, world, view), { sub: `${view.allies} of ${view.maxAllies} alliance seats · ${view.envoys.used} of ${view.envoys.slots} envoys`, right: back, cls: 'dip-commit dip-full' })
+          : situation;
+  // Levha bind'da takılır (tuval o zaman DOM'da ve ölçülüdür).
+  screens.dipSituation = centre === situation ? { model: situationModel(world, me, view.rows), selected: selectedId } : null;
+  const target = world.nations[selectedId];
+
+  return `${kpis}
+    <div class="dip-desk">
+      ${kitPanel('Nations', `${filters}<div class="dip-table v2">${head}${table}</div>`, { sub: `${view.rows.length} nations · ${view.neighbours} neighbours`, cls: 'dip-nations' })}
+      <div class="dip-right">
+        ${requests}
+        ${offers ? kitPanel('Peace offers', offers, { sub: 'answer within six weeks' }) : ''}
+        ${centre}
+        ${cards}
+      </div>
+      ${target?.alive ? deskStrip(screens, me, target, view.rows.find((r) => r.id === selectedId)) : ''}
+    </div>`;
+}
+
+/** Taahhüt kartının kısa satırları: tür ve adlar. Tam liste (düğmeleriyle) açılan panelde. */
+function commitmentLines(c) {
+  if (!c) return [];
+  const names = (list) => list.map((x) => esc(x.name)).join(', ');
+  const line = (label, list) => (list?.length ? `<div class="dip-cline"><b>${label}</b><span>${names(list)}</span></div>` : '');
+  return [
+    line('Allies', c.allies), line('Vassals', c.vassals), line('Guarantees', c.guaranteesGiven),
+    line('Guaranteed by', c.guaranteesHeld), line('Pacts', c.pacts), line('Casus belli', c.cbs),
+    line('Envoys', c.envoys), c.overlord ? line('Overlord', [c.overlord]) : '',
+  ].filter(Boolean);
+}
+
+/** Levhanın lejantı: çizgi dili dipSituation.LINE_STYLES ile aynı. */
+function situationLegend() {
+  const item = (key, label) => {
+    const st = LINE_STYLES[key];
+    const style = st.dash.length ? (st.dash[0] > 3 ? 'dashed' : 'dotted') : 'solid';
+    return `<span class="dip-lg"><i style="border-top:${st.width}px ${style} ${st.color}"></i>${label}</span>`;
+  };
+  return `<div class="dip-legend">${item('war', 'At war')}${item('ally', 'Allied')}${item('friendly', 'Friendly')}${item('neutral', 'Neutral')}${item('hostile', 'Hostile')}<span class="dip-lg"><i class="arrow"></i>Border pressure</span></div>`;
+}
+
+/**
+ * ALT ŞERİT: seçili ulusun lideri, ilişkisi ve dosyadaki eylem kutularının aynısı
+ * (dossierActions). Dosyayı açmadan elçi, ittifak, pakt, garanti, ambargo, savaş.
+ */
+function deskStrip(screens, me, target, row) {
+  const ctx = dossierContext(screens, me, target);
+  const rel = ctx.view.relations?.value ?? row?.relations?.value ?? 0;
+  const gov = governmentType(target);
+  const threat = row ? threatCell(row) : '<span class="dip-threat none">—</span>';
+  const ratio = row?.ratio ?? 1;
+  return `<section class="k-panel dip-strip" style="--nc:${esc(target.color ?? '#8a7a55')}">
+      <div class="dip-strip-id">
+        ${target.leader ? leaderPhoto(target.leader, 'lg') : ''}
+        <span class="flag" data-flag-nation="${target.id}" data-flag-w="60" data-flag-h="40" data-flag-style="crest"></span>
+        <div class="dip-strip-name">
+          <h3>${esc(target.name)}</h3>
+          ${target.leader ? `<p>${leaderByline(target.leader)}</p>` : ''}
+          <p class="dim">${esc(gov)}</p>
+        </div>
+        <dl class="dip-strip-facts">
+          <dt>Relations</dt><dd class="dip-relv ${toneOf(rel)}"><em>${rel > 0 ? '+' : ''}${fmt(rel, 0)}</em></dd>
+          <dt>Threat</dt><dd>${threat}</dd>
+          <dt>Strength</dt><dd>×${ratio.toFixed(ratio < 10 ? 1 : 0)}</dd>
+        </dl>
+        <button type="button" class="k-btn sm dip-strip-open" data-nation="${target.id}"${tip(`Open the dossier of ${target.name}\nHow they regard us and why, their profile and record.`)}>Dossier</button>
+      </div>
+      ${dossierActions(ctx, { maxDemands: 1 })}
+    </section>`;
 }
 
 // ---------------------------------------------------------------- DOSYA ---
@@ -405,10 +512,30 @@ export function renderDossierScreen(screens, me) {
     return '<p class="empty">Right-click a foreign state on the map to open its dossier.</p>';
   }
   if (target.id === me.id) return '<p class="empty">This is our own state: open the Nation tab.</p>';
+  const ctx = dossierContext(screens, me, target);
+  const offer = (game.peaceOffers ?? []).find((entry) => entry.from === target.id && entry.to === me.id);
+  // Ulusun harita rengi panelin vurgusudur: oyuncu dosyayı haritadaki lekesiyle eşler.
+  return `<div class="dsr" style="--nc:${esc(target.color ?? '#8a7a55')}">
+      ${dossierHead(ctx)}
+      ${leaderStrip(leaderView(world, target, turnOf(game)), target.leader)}
+      ${dossierActions(ctx)}
+      ${offer ? screens.peaceOfferCard(offer) : ''}
+      ${dossierRelations(ctx)}
+      ${dossierProfile(ctx)}
+      ${dossierRecord(ctx)}
+    </div>`;
+}
+
+const turnOf = (game) => game.turns.turn;
+
+/** Dosyanın ve masa şeridinin ortak bağlamı: aynı eylem kutuları iki yerde aynı hükmü verir. */
+function dossierContext(screens, me, target) {
+  const game = screens.game;
+  const world = game.world;
   const turn = game.turns.turn;
   const rec = relation(world, me.id, target.id);
   const war = atWar(world, me.id, target.id);
-  const ctx = {
+  return {
     screens, world, me, target, turn,
     view: dossierView(world, me, target, turn),
     war,
@@ -420,17 +547,6 @@ export function renderDossierScreen(screens, me) {
     overlord: overlordOf(world, me.id, turn) === target.id,
     allied: isAllied(me, target.id),
   };
-  const offer = (game.peaceOffers ?? []).find((entry) => entry.from === target.id && entry.to === me.id);
-  // Ulusun harita rengi panelin vurgusudur: oyuncu dosyayı haritadaki lekesiyle eşler.
-  return `<div class="dsr" style="--nc:${esc(target.color ?? '#8a7a55')}">
-      ${dossierHead(ctx)}
-      ${leaderStrip(leaderView(world, target, turn), target.leader)}
-      ${dossierActions(ctx)}
-      ${offer ? screens.peaceOfferCard(offer) : ''}
-      ${dossierRelations(ctx)}
-      ${dossierProfile(ctx)}
-      ${dossierRecord(ctx)}
-    </div>`;
 }
 
 /** Başlıktaki durum çipleri: önce savaş/barış, sonra bağlar ve kinler. */
@@ -490,7 +606,7 @@ function dossierHead(ctx) {
  * yakınlaşma (elçi, ittifak, pakt, garanti, birlik, barış), sağda baskı
  * (rakip, ambargo, talep, savaş). Aynı eylem her ülkede aynı yerde durur.
  */
-function dossierActions({ screens, world, me, target, view, war, talksIn, vassal, overlord, allied }) {
+function dossierActions({ screens, world, me, target, view, war, talksIn, vassal, overlord, allied }, { maxDemands = Infinity } = {}) {
   // Her kutu siyasi gücümüzü bilir: güç yetmezliği kısa yazılır (actTile).
   const tile = (spec) => actTile({ power: me.power ?? 0, ...spec });
   const v = view.verdicts;
@@ -613,7 +729,8 @@ function dossierActions({ screens, world, me, target, view, war, talksIn, vassal
     tipText: `Cuts trade both ways. Costs ${v.embargo.cost} political power; ${target.name} −20 in relations.`,
   }));
   if (!war && !vassal && !overlord && !allied) {
-    for (const d of view.demands) {
+    // Masa şeridi tek talep gösterir (şerit boyu sabit kalsın); hepsi dosyada.
+    for (const d of view.demands.slice(0, maxDemands)) {
       const key = `demand:${id}:${d.provinceId}`;
       pressure.push(tile({
         act: 'demand', arg: `${id}:${d.provinceId}`, icon: diplomacyArt('demand', 'sm'), label: `Demand ${d.name}`,
@@ -876,4 +993,34 @@ export function bindDiplomacyScreen(screens) {
   // öbür ucunda kalıyordu (Kerem: "bu ekranda çarpı yok").
   const close = screens.el.body.querySelector('[data-dsr-close]');
   if (close) close.onclick = () => screens.close();
+  // Masa: ulus seçimi (ad, satırın boş yeri ya da harita), çift tık dosyayı açar.
+  const select = (id) => {
+    if (screens.dipSelect === id) return;
+    screens.dipSelect = id;
+    screens.refresh();
+  };
+  for (const row of screens.el.body.querySelectorAll('[data-dip-row]')) {
+    const id = Number(row.dataset.dipRow);
+    // İkinci tık seçimin yeniden çizdiği YENİ satıra düşer: çift tık dblclick ile
+    // değil tıklama sayısıyla (event.detail) tanınır.
+    row.onclick = (event) => {
+      if (event.target.closest('button:not([data-dip-select]), a, input')) return;
+      if (event.detail >= 2) screens.openDossier(id);
+      else select(id);
+    };
+  }
+  for (const btn of screens.el.body.querySelectorAll('[data-dip-expand]')) {
+    btn.onclick = () => {
+      screens.dipExpand = btn.dataset.dipExpand || null;
+      screens.warFocus = null;
+      screens.refresh();
+    };
+  }
+  const sit = screens.dipSituation;
+  if (sit) {
+    mountSituation(screens.el.body.querySelector('[data-dip-sit]'), sit.model, sit.selected, {
+      onPick: select,
+      onOpen: (id) => screens.openDossier(id),
+    });
+  }
 }
