@@ -52,18 +52,17 @@ function adjacentKin(world, nation, provinces, cultureId) {
 }
 
 /**
- * Mirasçı: bitişik soydaş, yoksa halkın Free State yuvası (uyuyan ya da
- * yaşayan). Dominion yalnız yuvaya gider: soydaş komşu bize bağlı olmaz.
+ * Mirasçı: halkın KENDİ Free State yuvası (uyuyan ya da yaşayan); bitişik
+ * soydaş ancak yuva yoksa (bozuk kayıt). Kerem 2026-11-23: "başka ülkeye
+ * geçmek yerine yeni ülke olsalar" — bırakılan ya da kopan halk var olan bir
+ * devleti büyütmez, kendi devletini kurar. Dominion hep yuvaya gider.
  */
 export function heirFor(world, nation, cultureId, { dominion = false } = {}) {
   const provinces = releaseProvincesOf(world, nation, cultureId);
   if (!provinces.length) return null;
-  if (!dominion) {
-    const kin = adjacentKin(world, nation, provinces, cultureId);
-    if (kin) return kin;
-  }
   const slot = rebelStateOf(world, cultureId);
-  return slot && slot.id !== nation.id ? slot : null;
+  if (slot && slot.id !== nation.id) return slot;
+  return dominion ? null : adjacentKin(world, nation, provinces, cultureId);
 }
 
 export function releasePeopleBlockers(world, nation, cultureId, options = {}) {

@@ -85,7 +85,11 @@ const WAR_MIN_BODY = 26;
 const WAR_STALL_WEEKS = 18;
 
 /** Aylık hazırlık kontrolünün ilan aşamasına gelme ihtimali. */
-const DECLARE_CHANCE = 0.03;
+// 0.03 → 0.06 (2026-11-23): şöhret yumuşayınca koalisyon savaşları azaldı ve dünya durgunlaştı
+// (160×96, 30 yıl, BORDER1-2: savaş 245/208 → 147/110, el değiştiren %28 → %20). İlan iki katı ve
+// WAR_GATE.THRESHOLD 1.7 ile savaş 253/158, el değiştiren %28.1/29.1, savaşla alınan %14.5/14.7
+// (kartopu eşiği %33), ulus 69→77 / 64→65: dünya eski canlılığında, toprak savaşla el değiştiriyor.
+const DECLARE_CHANCE = 0.06;
 
 /**
  * Bu warscore'un üstünde YZ masaya oturup kazancını toplamak ister. 45 denendi
@@ -274,6 +278,9 @@ function diplomacy(game, nation, rng) {
     const odds = aggressionOdds(world, nation, other, { myPower, tension, turn });
     probeOdds(nation, other, odds);
     if (!odds.eligible) continue;
+    // OYUNCU HAFİF KORUNUR: YZ'ye oyuncuyu hedef almak için WAR_GATE.PLAYER_GUARD kat
+    // fazla üstünlük gerekir (Kerem: "oyuncu bence hafif korunabilir").
+    if (other.id === game.turns.playerNation && odds.ratio < odds.needed * WAR_GATE.PLAYER_GUARD) continue;
     const ratio = odds.ratio;
     // Çullanma sınırı: üçüncü saldırgan hiç binmez, ikincisi ancak açık ara
     // üstünlük ve gerçek bir sınırla biner (bkz. SECOND_FRONT_THRESHOLD).

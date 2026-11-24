@@ -32,9 +32,10 @@
 //                              8 hafta: özdeş; ikinci hayat istikrar 0.6, 0
 //                              süreli değiştirici (D7 yoksa SKIP)
 //   T5  savaş toprak üretir    eski TEST 5 olduğu gibi
-//   T6  her çıkış bir kez      hak, Home Rule (zorla kriz), Dominion, akrabaya
-//                              bırakma, Özgür Devlet, sürgün (Agitation'daki
-//                              tebaa) — mekanik yoksa SKIP
+//   T6  her çıkış bir kez      hak, Home Rule (zorla kriz), Dominion, Özgür
+//                              Devlet, sürgün (Agitation'daki tebaa) — mekanik
+//                              yoksa SKIP. Akrabaya bırakma 2026-11-23'te kalktı
+//                              (Kerem: bırakılan halk kendi devletini kurar).
 //
 //   node scripts/audit/homeland-audit.mjs [hafta] [HL1,HL2,...] [--big TOHUM|--no-big]
 
@@ -207,7 +208,7 @@ function exitsWorker(seed) {
   const world = game.world;
   const done = new Map();
   const legacy = {};
-  const EXITS = ['grant', 'homeRule', 'dominion', 'kin', 'freeState', 'deport'];
+  const EXITS = ['grant', 'homeRule', 'dominion', 'freeState', 'deport'];
   if (!HAS_D1) done.set('homeRule', { status: 'skip', detail: 'movements.answerCrisis / culture.isHomeRule yok (D1, P4)' });
   if (!HAS_D7) {
     for (const k of ['dominion', 'kin', 'freeState']) done.set(k, { status: 'skip', detail: 'nationBirth.releasePeople yok (D7, P3)' });
@@ -308,7 +309,7 @@ function exitsWorker(seed) {
     if (!done.has('grant')) tryGrant();
     if (!done.has('deport')) tryDeport();
     if (HAS_D7) {
-      for (const kind of ['kin', 'freeState', 'dominion']) if (!done.has(kind)) tryRelease(kind);
+      for (const kind of ['freeState', 'dominion']) if (!done.has(kind)) tryRelease(kind);
     } else tryLegacyVassal();
     if (HAS_D1 && !done.has('homeRule')) tryHomeRule();
   }

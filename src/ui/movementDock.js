@@ -144,6 +144,7 @@ export class MovementDock {
     const ask = row.track === 'homeRule' ? 'a state of their own' : 'Home Rule';
     const eta = row.eta != null ? etaLabel(row.eta, this.game.turns?.turn ?? this.game.world?.turn ?? 1) : null;
     const pace = row.crisis ? `answer within ${row.crisis.left}w`
+      : row.breakIn != null ? (row.breakAfterWar ? 'break away when the war ends' : `break away in ${row.breakIn}w`)
       : row.atBrink ? 'at the brink — they rise the moment the state falters'
         // Sıkıyönetim süresi Cultures'taki düğmenin resmiyle: oyuncu hangi
         // emrin işlediğini metni okumadan tanır.

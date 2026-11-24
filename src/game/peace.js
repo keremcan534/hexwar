@@ -266,7 +266,7 @@ export const PEACE_TERMS = {
   // kurulursa sart geri gelir.
   LIBERATE: {
     id: 'LIBERATE', name: 'Liberate Minorities', icon: '⚑', cost: 35,
-    desc: 'Provinces of a culture foreign to them break away and join a state of their own people.',
+    desc: 'Provinces of a culture foreign to them break away as a new state of their own people.',
   },
   VASSALIZE: {
     id: 'VASSALIZE', name: 'Vassalise', icon: '👑', cost: 65,
@@ -610,16 +610,17 @@ function addTo(list, entry) {
   };
 }
 
-/** Mirasçı ve onu veren yedek (yaşayan akrabaysa yedek null). */
+/**
+ * Mirasçı ve onu veren yedek (yaşayan akrabaysa yedek null). Önce halkın
+ * KENDİ devleti (yuva), akraba ancak yuva olamıyorsa (Kerem 2026-11-23:
+ * kurtarılan halk var olan bir ülkeyi büyütmesin, yeni ülke olsun).
+ */
 function resolveLiberationHeir(world, province, a, b) {
-  const kin = livingKinHeir(world, province, a, b);
-  const fallbacks = liberationFallbacks();
-  if (kin >= 0 || !fallbacks.length) return { heir: kin, fallback: null };
-  for (const fallback of fallbacks) {
+  for (const fallback of liberationFallbacks()) {
     const heir = fallback.heir(world, province, a, b);
     if (Number.isInteger(heir) && heir >= 0 && heir !== a && heir !== b) return { heir, fallback };
   }
-  return { heir: -1, fallback: null };
+  return { heir: livingKinHeir(world, province, a, b), fallback: null };
 }
 
 export function termAvailable(world, a, b, termId) {

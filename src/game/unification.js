@@ -3,15 +3,16 @@
 // Bölünmüş bir halkın devletleri iki yoldan birleşir:
 //   SAVAŞ   soydaş province'i tutan ülkeye savaş gerekçesi ucuzdur
 //           (diplomacy.hasClaimOn), barış masasında KURTARMA hedefi vardır.
-//   BARIŞ   küçük soydaş devlet, güç farkı büyükse ve savaşta değilse
-//           birleşme davetini kabul eder (SG bedeli, az şöhret).
+//   BARIŞ   küçük soydaş devlet teklifi tartar (unionVerdict: büyüklük,
+//           hükûmetinin sağlamlığı, kabine, bize bakışı, yorgunluk); savaşta
+//           değilse ve toplam ≥ 0 ise katılır (SG bedeli, az şöhret).
 // Ana yurdun %80'i tek elde toplanınca "BÜYÜK X" kurulur: ad, kalıcı fikir,
 // prestij, ana yurdun hepsi çekirdek olur. Her halk için bir kez.
 
 import { addIdea, refreshModifiers } from './modifiers.js';
 import { addInfamy } from './infamy.js';
 import { atWar } from './diplomacy.js';
-import { guarantorsOf } from './relations.js';
+import { guarantorsOf, regardOf } from './relations.js';
 import { disband } from './recruitment.js';
 
 /** Büyük X için ana yurdun tutulması gereken payı. */
@@ -29,6 +30,57 @@ export const UNION_RATIO = 3;
  * soydaş 120 SG'yi biriktirdiği an komşusunu alıyordu.
  */
 export const UNION_STABILITY = 0.45;
+
+/**
+ * BİRLEŞME KARARI (2026-11-23, Kerem: "birleşmede bir istek var, saçma").
+ * Eski kapı iki sabit şarttı: 3× nüfus VE küçüğün çalkantısı ya da
+ * milliyetçi kabinesi. Teklif edenin elindeki hiçbir şey sonucu değiştirmiyordu
+ * (10× büyük dost soydaşı istikrarlı küçük hep reddediyordu, bizden nefret eden
+ * ama sarsılan küçük kabul ediyordu) ve ilişki hiç okunmuyordu. Şimdi küçük
+ * devlet diğer diplomasi kararları gibi bir TOPLAM tartar: büyüklük farkı, kendi
+ * hükûmetinin sağlamlığı, milliyetçi kabine, bize bakışı, savaş yorgunluğu.
+ * 3× nüfus ve %45 istikrar hâlâ dengenin sıfır noktasıdır: eski kural
+ * sınırda aynı cevabı verir, uçlarda güç ve ilişki karar verir.
+ */
+export const UNION = {
+  SIZE: 20, SIZE_MIN: -40, SIZE_MAX: 20,
+  SECURE: 30, TURMOIL: 20, SPAN: 0.3,
+  NATIONALIST: 15, REGARD: 0.2, EXHAUSTION: 20,
+  /** Bundan küçüğe birleşme teklif edilemez (büyük soydaş küçüğe katılmaz). */
+  MIN_RATIO: 1.5,
+};
+
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+/** Küçük soydaşın birleşme teklifine bakışı: parçalar ve toplam (≥ 0 kabul). */
+export function unionVerdict(world, nation, other, turn = world.turn ?? 0) {
+  const mine = nation.economy?.population ?? 0;
+  const theirs = Math.max(1, other.economy?.population ?? 0);
+  const ratio = mine / theirs;
+  const parts = [];
+  const size = Math.max(UNION.SIZE_MIN, Math.min(UNION.SIZE_MAX, UNION.SIZE * Math.log2(Math.max(1e-6, ratio) / UNION_RATIO)));
+  parts.push({ label: `size ${ratio.toFixed(1)}×`, value: size });
+  const stability = other.stability ?? 0.5;
+  if (stability >= UNION_STABILITY) {
+    parts.push({ label: 'secure government', value: -UNION.SECURE * clamp01((stability - UNION_STABILITY) / UNION.SPAN) });
+  } else {
+    parts.push({ label: 'turmoil', value: UNION.TURMOIL * clamp01((UNION_STABILITY - stability) / UNION.SPAN) });
+  }
+  if (other.politics?.ruling === 'nationalist') parts.push({ label: 'nationalist cabinet', value: UNION.NATIONALIST });
+  const regard = regardOf(world, other.id, nation.id, turn);
+  if (Math.abs(regard) >= 1) parts.push({ label: 'relations', value: regard * UNION.REGARD });
+  const exhaustion = other.politics?.exhaustion ?? 0;
+  if (exhaustion >= 0.05) parts.push({ label: 'war-weary', value: UNION.EXHAUSTION * exhaustion });
+  const sum = parts.reduce((total, part) => total + part.value, 0);
+  return { ratio, parts, sum, yield: sum >= 0 };
+}
+
+/** Kararın oyuncuya okunan cümlesi (düğmenin engeli ya da ipucu). */
+export function unionSentence(verdict) {
+  const fmt = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(Math.round(v))}`;
+  return `${verdict.yield ? 'They would accept' : 'They would refuse'} (${fmt(verdict.sum)}): `
+    + verdict.parts.map((part) => `${part.label} ${fmt(part.value)}`).join(' · ');
+}
 
 function homeland(world, cultureId) {
   return (world.provinces ?? []).filter((p) => p.homeland === cultureId && p.econ);
@@ -102,9 +154,11 @@ export function unionBlockers(world, nation, other, turn = world.turn ?? 0, play
   if (fighting(nation)) out.push('We are at war: a union waits for the peace');
   const mine = nation.economy?.population ?? 0;
   const theirs = Math.max(1, other.economy?.population ?? 0);
-  if (mine / theirs < UNION_RATIO) out.push(`We must be ${UNION_RATIO}× their size (now ${(mine / theirs).toFixed(1)}×)`);
-  if ((other.stability ?? 0.5) >= UNION_STABILITY && other.politics?.ruling !== 'nationalist') {
-    out.push(`Their government is secure (stability ${Math.round((other.stability ?? 0.5) * 100)}%): only turmoil or a nationalist cabinet gives up the crown`);
+  if (mine / theirs < UNION.MIN_RATIO) {
+    out.push(`They are too large to join us (we are ${(mine / theirs).toFixed(1)}× their size, need ${UNION.MIN_RATIO}×)`);
+  } else if (other.id !== playerId) {
+    const verdict = unionVerdict(world, nation, other, turn);
+    if (!verdict.yield) out.push(unionSentence(verdict));
   }
   if ((other.treaties ?? []).some((t) => t.type === 'ALLIANCE' && (t.until ?? Infinity) > turn
     && (world.nations[t.partner]?.economy?.population ?? 0) > mine)) {

@@ -1383,8 +1383,8 @@ export function renderPopulation(game, me, state) {
   const held = status.total ? status.owned / status.total : 0;
   const unionRows = view.unions.map((u) => `<div class="k-urow">
       <b>${esc(u.name)}</b><small>${formatPopulation(u.population)}</small>
-      <span class="k-urow-ratio ${u.ratio >= u.need ? 'pos' : ''}"${tipAttr({ text: `Size\nWe must be ${u.need}× their population to absorb them peacefully. Now ${num(u.ratio, 1)}×.` })}>${num(u.ratio, 1)}× <small>/ ${u.need}×</small></span>
-      <button class="k-btn sm" data-uc-union="${u.id}"${blockedAttr(u.blockers)}${u.blockers.length ? '' : tipAttr({ text: `Union\nTheir whole state joins ours in peace. Costs ${u.power} political power and a little infamy.` })}>Union<small>${u.power} PP</small></button>
+      <span class="k-urow-ratio ${u.ratio >= u.need ? 'pos' : ''}"${tipAttr({ text: `Size\n${u.need}× their population is even: larger counts for the union, smaller against. Now ${num(u.ratio, 1)}×.\n${u.sentence}` })}>${num(u.ratio, 1)}× <small>/ ${u.need}×</small></span>
+      <button class="k-btn sm" data-uc-union="${u.id}"${blockedAttr(u.blockers)}${u.blockers.length ? '' : tipAttr({ text: `Union\n${u.sentence}\nTheir whole state joins ours in peace. Costs ${u.power} political power and a little infamy.` })}>Union<small>${u.power} PP</small></button>
     </div>`).join('');
   const formBlockers = formationBlockers(world, me);
 
@@ -1535,7 +1535,8 @@ export function renderCultures(game, me, state) {
       return `<button class="k-btn sm ${cls}${art ? ' has-art' : ''}${arming ? ' confirming' : ''}" data-uc-move="${id}:${row.cultureId}"${cfg.blockers.length ? blockedAttr(cfg.blockers) : tipAttr({ text: tip })}>${art}${arming ? 'Confirm' : label}</button>`;
     };
     const ticks = MOVEMENT.STAGES.slice(1).map((s) => `<i style="left:${s.at}%"></i>`).join('');
-    const pace = row.martialLeft > 0 ? `martial law · ${row.martialLeft} wk`
+    const pace = row.breakIn != null ? (row.breakAfterWar ? 'break away when the war ends' : `break away in ${row.breakIn} wk`)
+      : row.martialLeft > 0 ? `martial law · ${row.martialLeft} wk`
       : row.calmLeft > 0 ? `exhausted · ${row.calmLeft} wk`
         : row.eta != null ? `breaks away in ~${span(row.eta)}` : 'fading';
     return `<div class="k-move s${row.stage.index}" style="--mv:${row.color ?? '#888'}">
@@ -1628,7 +1629,7 @@ function peopleCard(world, me, d, state, acceptTip) {
   const where = d.deport.destinations.map((row) => `${esc(row.name)}${row.kin ? ' (kin)' : ''}`).join(', ');
   const away = d.primary || d.accepted ? '' : `
     ${act(esc(d.release.label ?? 'Release their provinces'), 'their majority provinces leave · no war, infamy falls',
-    confirmBtn(`release:${d.id}`, `data-uc-release="${d.id}"`, 'Release', `${d.release.label ?? 'Release'}\nEvery province where they are the majority leaves with them: to their kin state next door, or as their own Free State. No war; the world thinks better of us (infamy falls).`, d.release.blockers, 'danger'))}
+    confirmBtn(`release:${d.id}`, `data-uc-release="${d.id}"`, 'Release', `${d.release.label ?? 'Release'}\nEvery province where they are the majority leaves with them as a state of their own. No war; the world thinks better of us (infamy falls).`, d.release.blockers, 'danger'))}
     ${act(`Deport all ${formatPopulation(d.people)}`, `${where ? `to ${where}` : 'across the border'} · infamy +${Math.round(d.deport.infamy)} · their land empties`,
     confirmBtn(`expel:${d.id}`, `data-uc-expel="${d.id}"`, 'Deport', `Deport\nAll ${formatPopulation(d.people)} of them are driven across the border${where ? ` to ${where}` : ''}. Infamy +${Math.round(d.deport.infamy)}. Their provinces empty — settlers can fill them.`, d.deport.blockers, 'danger'))}
     ${act(d.confine.target ? `Confine to ${esc(d.confine.target.name)}` : 'Confine to one state', `${formatPopulation(d.confine.people)} moved · reservation unrest +${d.confine.unrest} · infamy +${Math.round(d.confine.infamy)}`,

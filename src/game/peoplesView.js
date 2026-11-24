@@ -24,7 +24,7 @@ import {
 import { movementView } from './movements.js';
 import { nationManpower } from './recruitment.js';
 import { growthFactors, occupiedShareOf, provinceName } from './provinces.js';
-import { UNION_POWER, UNION_RATIO, unionBlockers, unionCandidates, unificationStatus } from './unification.js';
+import { UNION_POWER, UNION_RATIO, unionBlockers, unionCandidates, unionSentence, unionVerdict, unificationStatus } from './unification.js';
 
 /** Huzursuzluk dökümünün oyuncuya okunan adları (artı yönde besleyenler). */
 const CAUSES = [
@@ -255,6 +255,7 @@ export function peoplesView(world, nation, turn, { limit = 10 } = {}) {
       need: UNION_RATIO,
       power: UNION_POWER,
       blockers: unionBlockers(world, nation, other, turn, -1),
+      sentence: unionSentence(unionVerdict(world, nation, other, turn)),
     };
   }).sort((a, b) => b.ratio - a.ratio);
 

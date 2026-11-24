@@ -20,10 +20,10 @@
 //   asama   Grievances 0 · Agitation 25 · Resistance 50 · Insurgency 75
 //           her asama uye kumelerin sadakatini (uretim, vergi, asker) daha
 //           hizli asindirir — hareket patlamadan once HISSEDILIR
-//   100     AYAKLANMA: kumeler kopar. Bitisik akraba devlet varsa ona katilir
-//           ve o devlet savas acar; yoksa halkin uyuyan devleti uyanir
-//           (world/nations.js appendRebelStates), ordusunu o kumelerden
-//           toplar ve ultimatomsuz savas acar.
+//   100     AYAKLANMA: once ihtar (NOTICE_WEEKS), sonra kumeler kopar ve
+//           halkin KENDI devleti uyanir (world/nations.js appendRebelStates;
+//           akraba devlete katilmak 2026-11-23'te kalkti), ordusunu o
+//           kumelerden toplar ve ultimatomsuz savas acar.
 //
 // FEDA EDILEN SEYLER (oyuncu ve YZ ayni kapidan):
 //   gecici  SIKIYONETIM  26 hafta: ilerleme geriler, haftalik para + istikrar
@@ -118,6 +118,16 @@ export const MOVEMENT = {
   /** Taviz her seferinde pahalanır: 40 + 20 × (son 10 yıldaki taviz). */
   CONCESSION_STEP: 20,
   CONCESSION_WINDOW: 520,
+  // AYRILIK İHTARI (2026-11-23, Kerem: "kültürlerin savaşta pat diye ayrılıp
+  // başka ülkeye geçmesi"). Kırılma noktasına varan halk o hafta gitmiyordu
+  // ama oyuncu bunu ancak toprak gittikten sonra görüyordu: yenilgi şoku
+  // talebi 99'a sıçratıyor, barışın ertesi haftası kopuş geliyordu. Artık
+  // kopuştan önce ilan edilmiş bir süre vardır; savaşta süre dolsa da barıştan
+  // sonra en az PEACE_GRACE hafta beklenir. Hareket kırılma noktasının altına
+  // inerse (taviz, sıkıyönetim, kabul) ihtar düşer.
+  NOTICE_WEEKS: 8,
+  NOTICE_COLLAPSE: 4,
+  PEACE_GRACE: 4,
   /** Ayaklanmanin ordusu: kume basina alay, alt/ust sinir. */
   ARMY_PER_PROVINCE: 0.8,
   ARMY_MIN: 2,
@@ -615,8 +625,28 @@ export function runMovements(game) {
   // 0.67-0.70: tek haftada bütün halkları; Kerem: "niye böyle patladı").
   // Tam çöküş (yorgunluk ≥ 0.85) dışında ülke başına 4 haftada bir halk,
   // en ileri hareket önce; ötekiler sırada bekler.
+  // İhtar: kırılma noktasındaki halk önce süre ilan eder; süresi dolmayan
+  // kopmaz. Kırılma noktasından inen halkın ihtarı düşer.
+  const ready = new Set();
+  for (const entry of [...uprisings, ...frees]) ready.add(`${entry.nation.id}:${entry.cultureId}`);
+  for (const nation of world.nations) {
+    if (!nation.alive || !nation.movements) continue;
+    for (const [key, state] of Object.entries(nation.movements)) {
+      if (state.breakingAt == null || ready.has(`${nation.id}:${key}`)) continue;
+      delete state.breakingAt;
+      if (nation.id === player) {
+        announce(game, nation, {
+          kind: 'POLITICS', tier: TIER.IMPORTANT, key: `secession-off-${key}-${turn}`,
+          title: `The ${cultureName(world, Number(key))} step back`,
+          detail: 'They no longer threaten to break away, for now.',
+        });
+      }
+    }
+  }
+  const due = (entry) => noticeDue(game, entry.nation, entry.cultureId, entry.provinces);
   const leaving = new Map();
   for (const entry of uprisings) {
+    if (!due(entry)) continue;
     const list = leaving.get(entry.nation) ?? [];
     list.push(entry);
     leaving.set(entry.nation, list);
@@ -637,11 +667,50 @@ export function runMovements(game) {
     }
     if (nation.politics) nation.politics.nextBreakaway = turn + 4;
   }
-  for (const { nation, cultureId } of frees) {
-    if (!nation.alive || (atWarNow(nation) && (nation.politics?.exhaustion ?? 0) < 0.85)) continue;
-    if (releasePeople(game, nation, cultureId)) count(world, 'freed', 1);
+  for (const entry of frees) {
+    const { nation, cultureId } = entry;
+    if (!nation.alive || !due(entry)) continue;
+    if (atWarNow(nation) && (nation.politics?.exhaustion ?? 0) < 0.85) continue;
+    if (releasePeople(game, nation, cultureId)) {
+      count(world, 'freed', 1);
+      delete stateOf(nation, cultureId).breakingAt;
+    }
   }
   return uprisings.length;
+}
+
+/**
+ * Kopuş ihtarı: ilk kez kırılma noktasına varan halk süre ilan eder (tam
+ * çöküşte kısa). Savaşta süre dolsa bile barışın ardından PEACE_GRACE hafta
+ * beklenir: barışın ertesi haftası "pat diye" kopuş olmasın.
+ */
+function noticeDue(game, nation, cultureId, provinces = null) {
+  const world = game.world;
+  const turn = turnOf(game);
+  const state = stateOf(nation, cultureId);
+  const collapse = (nation.politics?.exhaustion ?? 0) >= 0.85;
+  if (state.breakingAt == null) {
+    state.breakingAt = turn + (collapse ? MOVEMENT.NOTICE_COLLAPSE : MOVEMENT.NOTICE_WEEKS);
+    if (nation.id === game.turns?.playerNation) {
+      const heir = rebelStateOf(world, cultureId);
+      const list = provinces?.length ? provinces : demandProvinces(world, nation, cultureId);
+      const where = list.length === 1 ? (list[0].name ?? 'a province') : `${list.length} provinces`;
+      const weeks = state.breakingAt - turn;
+      announce(game, nation, {
+        kind: 'CRISIS', tier: TIER.MAJOR, key: `secession-${cultureId}-${turn}`,
+        title: `The ${cultureName(world, cultureId)} will break away in ${weeks} weeks`,
+        detail: `${where} will form ${heir?.alive ? heir.name : 'a state of their own'}${atWarNow(nation) ? ', once the war ends' : ''}.`
+          + ' Concede, impose martial law, accept them or release them on the Cultures screen.',
+        tile: list[0]?.center ?? null,
+      });
+    }
+    return false;
+  }
+  if (atWarNow(nation) && !collapse) {
+    state.breakingAt = Math.max(state.breakingAt, turn + MOVEMENT.PEACE_GRACE);
+    return false;
+  }
+  return turn >= state.breakingAt;
 }
 
 /* --------------------------------------------------------------------------
@@ -652,19 +721,6 @@ export function runMovements(game) {
 export function rebelStateOf(world, cultureId) {
   return world.nations.find((nation) => nation.archetype === 'rebel'
     && nation.rebelCulture === cultureId) ?? null;
-}
-
-/** Kumelere bitisik, ayni halktan, yasayan bir devlet. */
-function adjacentKin(world, nation, provinces, cultureId) {
-  for (const province of provinces) {
-    for (const neighborId of province.neighbors ?? []) {
-      const neighbor = world.provinces?.[neighborId];
-      if (!neighbor || neighbor.owner < 0 || neighbor.owner === nation.id) continue;
-      const other = world.nations[neighbor.owner];
-      if (other?.alive && other.culture === cultureId) return other;
-    }
-  }
-  return null;
 }
 
 function bound(world, a, b, turn) {
@@ -785,13 +841,13 @@ function uprising(game, nation, cultureId, provinces) {
     state.progress = Math.min(state.progress ?? 0, MOVEMENT.BRINK);
     return false;
   }
-  let heir = adjacentKin(world, nation, provinces, cultureId);
-  let awakened = false;
-  if (!heir) {
-    heir = rebelStateOf(world, cultureId);
-    if (!heir || heir.id === nation.id) return false;
-    if (!heir.alive) awakened = true;
-  }
+  // Kopan halk KENDİ devletini kurar (Kerem 2026-11-23: "başka ülkeye geçmek
+  // yerine yeni ülke olsalar"). Eskiden bitişik soydaş devlet varsa toprak
+  // ona geçiyor, o da savaş açıyordu: haritada var olan bir ülke bir haftada
+  // büyüyordu. Soydaşa katılmak artık barışın ve birleşmenin işidir.
+  const heir = rebelStateOf(world, cultureId);
+  if (!heir || heir.id === nation.id) return false;
+  const awakened = !heir.alive;
   // Tükenmiş devlet (yorgunluk ≥ 0.60) kopanı tutamaz: savaşsız ayrılık.
   // Başka bir savaştaki devletten kopuş da SAVAŞSIZDIR: isyan savaşı ikinci
   // cephe açıyor, ordusu oyuncuyla meşgul efendinin boş toprağını isyancılar
@@ -816,6 +872,7 @@ function uprising(game, nation, cultureId, provinces) {
     if (rec) rec.truceUntil = Math.max(rec.truceUntil ?? 0, turn + 52);
   }
   count(world, peaceful ? 'secession' : 'war', provinces.length);
+  delete state.breakingAt;
   state.progress = 0;
   state.trend = 0;
   state.calmUntil = turn + MOVEMENT.COOLDOWN;
@@ -1148,6 +1205,9 @@ export function movementView(world, nation, { storedTrack = false } = {}) {
         ? Math.ceil(((track === 'subject' && !shaken ? MOVEMENT.BRINK : 100) - progress) / trend) : null,
       martialLeft: Math.max(0, (state.martialUntil ?? 0) - turn),
       calmLeft: Math.max(0, (state.calmUntil ?? 0) - turn),
+      // Kopuş ihtarı: kalan hafta (savaşta barışı bekler).
+      breakIn: state.breakingAt != null ? Math.max(0, state.breakingAt - turn) : null,
+      breakAfterWar: state.breakingAt != null && atWarNow(nation),
       heir: rebel ? { id: rebel.id, name: rebel.name, alive: rebel.alive } : null,
       actions: {
         martial: { blockers: martialBlockers(world, nation, cultureId, turn), cost: martialCost(provinces), weeks: MOVEMENT.MARTIAL_WEEKS },

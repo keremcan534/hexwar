@@ -37,7 +37,10 @@ export const DIP_ARM_IDS = Object.keys(DIP_AI);
  * ai.js kendi adlarını buradan tanımlar ki diğer kullanımları aynı kalsın.
  */
 export const WAR_GATE = {
-  THRESHOLD: 1.8,
+  /** 1.8 → 1.7 (2026-11-23, ai.js DECLARE_CHANCE ile birlikte ölçüldü). */
+  THRESHOLD: 1.7,
+  /** YZ oyuncuyu hedef almak için bu kat fazla üstünlük ister (Kerem: "oyuncu hafif korunabilir"). */
+  PLAYER_GUARD: 1.15,
   ALLY_WEIGHT: 0.5,
   MAX_ATTACKERS: 2,
   MIN_REGIMENTS: 4,
